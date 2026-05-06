@@ -71,10 +71,14 @@ function parseParkingText(text: string): Omit<ExtractedParkingData, "raw_text"> 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GOOGLE_VISION_API_KEY;
+  // Supports both naming conventions (NEXT_PUBLIC_ for local dev convenience,
+  // GOOGLE_VISION_API_KEY preferred for production — no browser exposure)
+  const apiKey =
+    process.env.GOOGLE_VISION_API_KEY ??
+    process.env.NEXT_PUBLIC_VISION_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "GOOGLE_VISION_API_KEY is not set. Add it to your .env file." },
+      { error: "Google Vision API key not set. Add GOOGLE_VISION_API_KEY to .env." },
       { status: 503 },
     );
   }

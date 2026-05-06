@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isHalifaxLocation } from "./validation";
 import type { ExtractedParkingData } from "@/app/api/analyse-sign/route";
 
 export async function uploadSignSubmission({
@@ -14,6 +15,11 @@ export async function uploadSignSubmission({
   deviceMetadata: Record<string, string>;
   extractedData?: ExtractedParkingData;
 }): Promise<void> {
+  // Reject submissions outside Halifax/HRM bounds immediately
+  if (!isHalifaxLocation(latitude, longitude)) {
+    throw new Error("Location is outside the Halifax Regional Municipality area.");
+  }
+
   const storagePath = `submissions/${Date.now()}-${crypto.randomUUID()}.jpg`;
 
   const { error: storageError } = await supabase.storage
