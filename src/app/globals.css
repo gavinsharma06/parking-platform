@@ -23,6 +23,16 @@ html {
   scroll-behavior: smooth;
 }
 
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Mapbox controls sit below our search bar */
+.mapboxgl-ctrl-top-right {
+  top: 56px !important;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
+import type { GeoJSONSource } from "mapbox-gl";
+import type { FeatureCollection, Point } from "geojson";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
 
@@ -9,18 +11,19 @@ import { supabase } from "@/lib/supabase";
 
 const HALIFAX_CENTER: [number, number] = [-63.5788, 44.6476];
 const ZOOM = 14;
+const HRM_BBOX = "-64.5,44.3,-62.8,45.2";
 
 const TYPE_COLOR: Record<string, string> = {
-  free:       "#16a34a",  // green
-  paid:       "#2563eb",  // blue (dark)
-  permit:     "#d97706",  // amber
-  accessible: "#0ea5e9",  // sky blue
-  unknown:    "#6b7280",  // gray
+  free:       "#16a34a",
+  paid:       "#2563eb",
+  permit:     "#d97706",
+  accessible: "#0ea5e9",
+  unknown:    "#6b7280",
 };
 
 const TYPE_LABEL: Record<string, string> = {
-  free:       "Free",
-  paid:       "Paid",
+  free:       "Free parking",
+  paid:       "Paid parking",
   permit:     "Permit only",
   accessible: "Accessible",
   unknown:    "Unknown",
@@ -41,33 +44,37 @@ type Spot = {
   notes: string | null;
 };
 
-// ─── Sample data (shown when Supabase table is empty) ────────────────────────
+type SearchResult = {
+  id: string;
+  place_name: string;
+  center: [number, number];
+};
+
+// ─── Sample fallback ──────────────────────────────────────────────────────────
 
 const SAMPLE_SPOTS: Spot[] = [
-  { id: "s1", latitude: 44.6488, longitude: -63.5752, parking_type: "free",       street_name: "Spring Garden Rd", from_street: "Queen St",    to_street: "Park St",       time_limit_minutes: 120,  cost_per_hour: null, notes: null },
-  { id: "s2", latitude: 44.6468, longitude: -63.5729, parking_type: "paid",       street_name: "Barrington St",    from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: 2.50, notes: null },
-  { id: "s3", latitude: 44.6502, longitude: -63.5771, parking_type: "permit",     street_name: "Robie St",         from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: null, notes: "Zone A permit required" },
-  { id: "s4", latitude: 44.6479, longitude: -63.5810, parking_type: "free",       street_name: "Queen St",         from_street: "Brunswick St", to_street: "Hollis St",    time_limit_minutes: 60,   cost_per_hour: null, notes: null },
-  { id: "s5", latitude: 44.6455, longitude: -63.5760, parking_type: "paid",       street_name: "Granville St",     from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: 3.00, notes: null },
-  { id: "s6", latitude: 44.6510, longitude: -63.5740, parking_type: "accessible", street_name: "Brunswick St",     from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: null, notes: null },
-  { id: "s7", latitude: 44.6440, longitude: -63.5790, parking_type: "unknown",    street_name: "Lower Water St",   from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: null, notes: null },
-  { id: "s8", latitude: 44.6495, longitude: -63.5800, parking_type: "paid",       street_name: "Hollis St",        from_street: null,          to_street: null,            time_limit_minutes: null, cost_per_hour: 2.00, notes: null },
-  { id: "s9", latitude: 44.6520, longitude: -63.5760, parking_type: "free",       street_name: "University Ave",   from_street: null,          to_street: null,            time_limit_minutes: 90,   cost_per_hour: null, notes: null },
+  { id: "s1", latitude: 44.6488, longitude: -63.5752, parking_type: "free",       street_name: "Spring Garden Rd", from_street: "Queen St",     to_street: "Park St",   time_limit_minutes: 120,  cost_per_hour: null, notes: null },
+  { id: "s2", latitude: 44.6468, longitude: -63.5729, parking_type: "paid",       street_name: "Barrington St",    from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.50, notes: null },
+  { id: "s3", latitude: 44.6502, longitude: -63.5771, parking_type: "permit",     street_name: "Robie St",         from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: "Zone A permit required" },
+  { id: "s4", latitude: 44.6479, longitude: -63.5810, parking_type: "free",       street_name: "Queen St",         from_street: "Brunswick St", to_street: "Hollis St", time_limit_minutes: 60,   cost_per_hour: null, notes: null },
+  { id: "s5", latitude: 44.6455, longitude: -63.5760, parking_type: "paid",       street_name: "Granville St",     from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 3.00, notes: null },
+  { id: "s6", latitude: 44.6510, longitude: -63.5740, parking_type: "accessible", street_name: "Brunswick St",     from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: null },
+  { id: "s7", latitude: 44.6440, longitude: -63.5790, parking_type: "unknown",    street_name: "Lower Water St",   from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: null },
+  { id: "s8", latitude: 44.6495, longitude: -63.5800, parking_type: "paid",       street_name: "Hollis St",        from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.00, notes: null },
+  { id: "s9", latitude: 44.6520, longitude: -63.5760, parking_type: "free",       street_name: "University Ave",   from_street: null,           to_street: null,        time_limit_minutes: 90,   cost_per_hour: null, notes: null },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function createPinElement(color: string): HTMLDivElement {
-  const el = document.createElement("div");
-  // pointer-events:all is required — Mapbox sets the marker wrapper to none in v3
-  el.style.cssText = "cursor:pointer;width:26px;height:34px;pointer-events:all;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.28))";
-  el.innerHTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 34" width="26" height="34">
-      <path d="M13 0C5.82 0 0 5.82 0 13c0 9.1 13 21 13 21S26 22.1 26 13C26 5.82 20.18 0 13 0z"
-            fill="${color}" />
-      <circle cx="13" cy="13" r="5.5" fill="white" />
-    </svg>`;
-  return el;
+function spotsToGeoJSON(spots: Spot[]): FeatureCollection<Point> {
+  return {
+    type: "FeatureCollection",
+    features: spots.map((s) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [s.longitude, s.latitude] },
+      properties: { ...s },
+    })),
+  };
 }
 
 function formatTimeLimit(minutes: number): string {
@@ -76,88 +83,96 @@ function formatTimeLimit(minutes: number): string {
   return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""} limit` : `${m}m limit`;
 }
 
-function buildPopupHTML(spot: Spot): string {
-  const color = TYPE_COLOR[spot.parking_type] ?? TYPE_COLOR.unknown;
-  const label = TYPE_LABEL[spot.parking_type] ?? "Parking";
-
-  // Street line: "Spring Garden Rd  Queen St → Park St"
-  let streetLine = "";
-  if (spot.street_name) {
-    streetLine += `<p style="margin:5px 0 0;font-size:13px;font-weight:600;color:#111827">${spot.street_name}</p>`;
-  }
-  if (spot.from_street && spot.to_street) {
-    streetLine += `<p style="margin:2px 0 0;font-size:11px;color:#6b7280">${spot.from_street} → ${spot.to_street}</p>`;
-  }
-
-  // Details row
-  const details: string[] = [];
-  if (spot.time_limit_minutes) details.push(`⏱ ${formatTimeLimit(spot.time_limit_minutes)}`);
-  if (spot.cost_per_hour != null && spot.cost_per_hour > 0) details.push(`💰 $${spot.cost_per_hour.toFixed(2)}/hr`);
-  else if (spot.cost_per_hour === 0)                        details.push("💰 Free");
-  else if (spot.parking_type === "paid")                    details.push("💰 See meter");
-
-  const detailRow = details.length
-    ? `<div style="margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px">
-        ${details.map(d => `<span style="background:#f3f4f6;border-radius:999px;padding:2px 8px;font-size:11px;color:#374151">${d}</span>`).join("")}
-       </div>`
-    : "";
-
-  const notesLine = spot.notes
-    ? `<p style="margin:6px 0 0;font-size:11px;color:#6b7280;font-style:italic">${spot.notes}</p>`
-    : "";
-
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${spot.latitude},${spot.longitude}`;
-
-  return `
-    <div style="font-family:system-ui,-apple-system,sans-serif;padding:4px 2px;min-width:190px">
-      <div style="display:flex;align-items:center;gap:7px">
-        <span style="
-          display:inline-block;width:11px;height:11px;border-radius:50%;
-          background:${color};flex-shrink:0;
-          border:2px solid #fff;box-shadow:0 0 0 1.5px ${color}
-        "></span>
-        <strong style="font-size:14px;color:#111827">${label}</strong>
-      </div>
-      ${streetLine}
-      ${detailRow}
-      ${notesLine}
-      <a
-        href="${mapsUrl}"
-        target="_blank"
-        rel="noopener noreferrer"
-        style="
-          display:block;margin-top:12px;padding:8px 0;
-          background:#4f46e5;color:#fff;
-          text-align:center;border-radius:999px;
-          font-size:12px;font-weight:600;text-decoration:none;
-        "
-      >Open in Google Maps ↗</a>
-    </div>`;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ParkingMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const markersRef   = useRef<mapboxgl.Marker[]>([]);
-  const [spots, setSpots] = useState<Spot[]>([]);
+  const mapReady     = useRef(false);
+  const spotsRef     = useRef<Spot[]>([]);
+  const searchTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRef    = useRef<HTMLDivElement>(null);
 
-  // Fetch spots; fall back to sample data if table is empty
+  const [spots,       setSpots]       = useState<Spot[]>([]);
+  const [selected,    setSelected]    = useState<Spot | null>(null);
+  const [query,       setQuery]       = useState("");
+  const [results,     setResults]     = useState<SearchResult[]>([]);
+  const [searching,   setSearching]   = useState(false);
+  const [showResults, setShowResults] = useState(false);
+
+  // ── Fetch spots ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     supabase
       .from("parking_spots")
-      .select("id, latitude, longitude, parking_type, street_name, from_street, to_street, time_limit_minutes, cost_per_hour, notes")
+      .select("id,latitude,longitude,parking_type,street_name,from_street,to_street,time_limit_minutes,cost_per_hour,notes")
       .eq("is_active", true)
-      .then(({ data }) => {
-        setSpots(data && data.length > 0 ? (data as Spot[]) : SAMPLE_SPOTS);
-      });
+      .then(({ data }) => setSpots(data && data.length > 0 ? (data as Spot[]) : SAMPLE_SPOTS));
   }, []);
 
-  // Init map once
+  // ── Add / update GeoJSON source & layers ──────────────────────────────────
+
+  function addLayers(map: mapboxgl.Map, data: FeatureCollection<Point>) {
+    map.addSource("spots", {
+      type: "geojson",
+      data,
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 40,
+    });
+
+    // Cluster circles
+    map.addLayer({
+      id: "clusters",
+      type: "circle",
+      source: "spots",
+      filter: ["has", "point_count"],
+      paint: {
+        "circle-color": "#4f46e5",
+        "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 28],
+        "circle-opacity": 0.85,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#fff",
+      },
+    });
+
+    // Cluster count labels
+    map.addLayer({
+      id: "cluster-count",
+      type: "symbol",
+      source: "spots",
+      filter: ["has", "point_count"],
+      layout: { "text-field": "{point_count_abbreviated}", "text-size": 12, "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"] },
+      paint: { "text-color": "#fff" },
+    });
+
+    // Individual spots — GPU-rendered, data-driven color, size scales with zoom
+    map.addLayer({
+      id: "spots",
+      type: "circle",
+      source: "spots",
+      filter: ["!", ["has", "point_count"]],
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 7, 17, 10],
+        "circle-color": [
+          "match", ["get", "parking_type"],
+          "free",       TYPE_COLOR.free,
+          "paid",       TYPE_COLOR.paid,
+          "permit",     TYPE_COLOR.permit,
+          "accessible", TYPE_COLOR.accessible,
+          TYPE_COLOR.unknown,
+        ],
+        "circle-stroke-width": 1.5,
+        "circle-stroke-color": "#fff",
+        "circle-opacity": 0.95,
+      },
+    });
+  }
+
+  // ── Init map ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-
     mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
     const map = new mapboxgl.Map({
@@ -177,82 +192,232 @@ export default function ParkingMap() {
       "top-right",
     );
 
-    mapRef.current = map;
+    map.on("load", () => {
+      mapReady.current = true;
+      if (spotsRef.current.length > 0) {
+        addLayers(map, spotsToGeoJSON(spotsRef.current));
+      }
+    });
 
-    return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-      map.remove();
-      mapRef.current = null;
-    };
+    // Click individual spot
+    map.on("click", "spots", (e) => {
+      if (!e.features?.length) return;
+      const props = e.features[0].properties as Record<string, unknown>;
+      const spot: Spot = {
+        id:                 String(props.id ?? ""),
+        latitude:           Number(props.latitude),
+        longitude:          Number(props.longitude),
+        parking_type:       String(props.parking_type ?? "unknown"),
+        street_name:        props.street_name ? String(props.street_name) : null,
+        from_street:        props.from_street  ? String(props.from_street)  : null,
+        to_street:          props.to_street    ? String(props.to_street)    : null,
+        time_limit_minutes: props.time_limit_minutes != null ? Number(props.time_limit_minutes) : null,
+        cost_per_hour:      props.cost_per_hour != null      ? Number(props.cost_per_hour)      : null,
+        notes:              props.notes ? String(props.notes) : null,
+      };
+      setSelected(spot);
+      map.easeTo({ center: e.lngLat, offset: [0, -100], duration: 250 });
+      e.originalEvent.stopPropagation();
+    });
+
+    // Click cluster → zoom in
+    map.on("click", "clusters", (e) => {
+      if (!e.features?.length) return;
+      const clusterId = e.features[0].properties?.cluster_id as number;
+      const src = map.getSource("spots") as GeoJSONSource;
+      src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err || zoom == null) return;
+        map.easeTo({ center: (e.features![0].geometry as GeoJSON.Point).coordinates as [number, number], zoom });
+      });
+    });
+
+    // Pointer cursors
+    map.on("mouseenter", "spots",    () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "spots",    () => { map.getCanvas().style.cursor = ""; });
+    map.on("mouseenter", "clusters", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = ""; });
+
+    // Click empty map → close sheet
+    map.on("click", (e) => {
+      const features = map.queryRenderedFeatures(e.point, { layers: ["spots", "clusters"] });
+      if (!features.length) setSelected(null);
+    });
+
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; mapReady.current = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Drop / refresh pin markers whenever spots change
+  // ── Sync spots → map source ───────────────────────────────────────────────
+
   useEffect(() => {
+    spotsRef.current = spots;
     const map = mapRef.current;
     if (!map || spots.length === 0) return;
 
-    // Clear old markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    if (!mapReady.current) return; // map.on("load") will call addLayers instead
 
-    const popups: mapboxgl.Popup[] = [];
-
-    spots.forEach((spot) => {
-      const el = createPinElement(TYPE_COLOR[spot.parking_type] ?? TYPE_COLOR.unknown);
-
-      // Use Mapbox's native setPopup — handles click toggle internally
-      // and respects pointer-events correctly across all browsers
-      const popup = new mapboxgl.Popup({
-        offset: 38,
-        closeButton: true,
-        maxWidth: "300px",
-        className: "parkoff-popup",
-      }).setHTML(buildPopupHTML(spot));
-
-      // Enforce single-popup: close all others when this one opens
-      popup.on("open", () => {
-        popups.forEach((p) => { if (p !== popup) p.remove(); });
-      });
-
-      popups.push(popup);
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([spot.longitude, spot.latitude])
-        .setPopup(popup)
-        .addTo(map);
-
-      markersRef.current.push(marker);
-    });
-
-    return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-    };
+    const src = map.getSource("spots") as GeoJSONSource | undefined;
+    if (src) {
+      src.setData(spotsToGeoJSON(spots));
+    } else {
+      addLayers(map, spotsToGeoJSON(spots));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spots]);
 
-  return (
-    <div className="relative">
-      <div
-        ref={containerRef}
-        className="h-96 w-full overflow-hidden rounded-2xl border border-gray-200 shadow-md"
-      />
+  // ── Geocoding search ─────────────────────────────────────────────────────
 
-      {/* Legend */}
-      <div className="absolute bottom-3 left-3 flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-white/90 px-3 py-2.5 shadow-sm backdrop-blur-sm">
-        {Object.entries(TYPE_LABEL).map(([type, label]) => (
-          <div key={type} className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 flex-shrink-0 rounded-full border-2 border-white"
-              style={{
-                background: TYPE_COLOR[type],
-                boxShadow: `0 0 0 1.5px ${TYPE_COLOR[type]}`,
-              }}
-            />
-            <span className="text-xs text-gray-700">{label}</span>
-          </div>
-        ))}
+  const handleSearch = useCallback((value: string) => {
+    setQuery(value);
+    setShowResults(true);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!value.trim()) { setResults([]); return; }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+        const res = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json` +
+          `?access_token=${token}&bbox=${HRM_BBOX}&proximity=-63.5788,44.6476&types=address,place,neighborhood,locality&limit=5`,
+        );
+        const data = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setResults((data.features ?? []).map((f: any) => ({ id: f.id, place_name: f.place_name, center: f.center })));
+      } catch { setResults([]); }
+      finally  { setSearching(false); }
+    }, 320);
+  }, []);
+
+  const selectResult = useCallback((r: SearchResult) => {
+    setQuery(r.place_name.split(",")[0]);
+    setResults([]);
+    setShowResults(false);
+    mapRef.current?.flyTo({ center: r.center, zoom: 15.5, duration: 900 });
+  }, []);
+
+  useEffect(() => {
+    const hide = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowResults(false);
+    };
+    document.addEventListener("mousedown", hide);
+    return () => document.removeEventListener("mousedown", hide);
+  }, []);
+
+  // ─── Render ──────────────────────────────────────────────────────────────
+
+  const spotColor = selected ? (TYPE_COLOR[selected.parking_type] ?? TYPE_COLOR.unknown) : "";
+  const spotLabel = selected ? (TYPE_LABEL[selected.parking_type] ?? "Parking") : "";
+  const chips: string[] = [];
+  if (selected?.time_limit_minutes) chips.push(`⏱ ${formatTimeLimit(selected.time_limit_minutes)}`);
+  if (selected && selected.cost_per_hour != null && selected.cost_per_hour > 0) chips.push(`💰 $${selected.cost_per_hour.toFixed(2)}/hr`);
+  else if (selected?.parking_type === "paid") chips.push("💰 See meter");
+  const mapsUrl = selected
+    ? `https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}`
+    : "";
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+
+      {/* ── Search bar ──────────────────────────────────────────────────── */}
+      <div ref={searchRef} className="absolute top-3 left-3 right-14 z-10">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <input
+            type="text"
+            placeholder="Search Halifax location…"
+            value={query}
+            onChange={(e) => handleSearch(e.target.value)}
+            onFocus={() => query && setShowResults(true)}
+            className="h-11 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-4 text-sm shadow-lg placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          {searching && (
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">…</span>
+          )}
+        </div>
+
+        {showResults && results.length > 0 && (
+          <ul className="mt-1 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+            {results.map((r) => (
+              <li key={r.id}>
+                <button
+                  onClick={() => selectResult(r)}
+                  className="flex w-full items-start gap-2.5 px-4 py-3 text-left text-sm hover:bg-indigo-50 active:bg-indigo-100"
+                >
+                  <span className="mt-0.5 shrink-0 text-indigo-400">📍</span>
+                  <span className="text-gray-800">{r.place_name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+
+      {/* ── Map canvas ──────────────────────────────────────────────────── */}
+      <div ref={containerRef} className="h-full w-full" />
+
+      {/* ── Legend ──────────────────────────────────────────────────────── */}
+      {!selected && (
+        <div className="absolute bottom-4 left-3 z-10 flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-white/95 px-3 py-2.5 shadow-md backdrop-blur-sm">
+          {Object.entries(TYPE_LABEL).map(([type, lbl]) => (
+            <div key={type} className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: TYPE_COLOR[type] }} />
+              <span className="text-xs text-gray-600">{lbl}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Bottom sheet ────────────────────────────────────────────────── */}
+      {selected && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 rounded-t-2xl bg-white shadow-2xl" style={{ animation: "slideUp 0.2s ease-out" }}>
+          <div className="flex justify-center pt-2.5">
+            <div className="h-1 w-8 rounded-full bg-gray-200" />
+          </div>
+          <div className="px-5 pt-3 pb-8">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold text-white" style={{ background: spotColor }}>
+                <span className="h-2 w-2 rounded-full bg-white/50" />
+                {spotLabel}
+              </span>
+              <button
+                onClick={() => setSelected(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-sm text-gray-500 hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            {selected.street_name && (
+              <p className="mt-3 text-base font-bold text-gray-900">{selected.street_name}</p>
+            )}
+            {selected.from_street && selected.to_street && (
+              <p className="mt-0.5 text-sm text-gray-500">{selected.from_street} → {selected.to_street}</p>
+            )}
+
+            {chips.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {chips.map((c) => (
+                  <span key={c} className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700">{c}</span>
+                ))}
+              </div>
+            )}
+
+            {selected.notes && (
+              <p className="mt-2 text-sm italic text-gray-500">{selected.notes}</p>
+            )}
+
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-sm font-semibold text-white active:bg-indigo-700"
+            >
+              Get directions ↗
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
