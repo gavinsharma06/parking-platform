@@ -57,6 +57,10 @@ node scripts/run-ocr-batch.js parkingsigns
 ```
 Runs the full parser pipeline against every image in a folder and prints raw OCR + extracted rules. The inline parser in this script must be kept in sync with `route.ts`.
 
+- Returns: `{ parking_type, time_limit_minutes, cost_per_hour, schedule, raw_text }`
+- Parser handles Halifax-specific patterns: time limits, cost per hour, zone permits, accessible spots, schedule ranges
+- Images are sent as base64 JPEG in the request body
+
 ## Google Cloud Vision — best practices (sourced from official docs: docs.cloud.google.com/vision)
 
 ### Image formats
@@ -173,6 +177,16 @@ GOOGLE_VISION_API_KEY
 - Colors refresh every 5 minutes via `setInterval`
 - Bottom sheet lists all rules from `spot.schedule.rules`, highlights active rule with "ACTIVE NOW" badge
 - Geocoder restricted to HRM bounding box: `-64.5,44.3,-62.8,45.2`
+## Supabase schema (current)
+- `parking_spots` — live spots shown on map (id, latitude, longitude, parking_type, street_name, from_street, to_street, time_limit_minutes, cost_per_hour, notes)
+- `sign_submissions` — raw community submissions awaiting admin review (id, image_path, latitude, longitude, device_metadata, extracted_data, status, reviewer_notes, submitted_at, parking_spot_id)
+- Storage bucket: `parking-signs` — stores submission images
+
+## Map (Mapbox)
+- Centered on downtown Halifax: `[-63.5788, 44.6476]`, zoom 14
+- Color coding: free=#16a34a, paid=#2563eb, permit=#d97706, accessible=#0ea5e9, unknown=#6b7280
+- Geocoder restricted to HRM bounding box: `-64.5,44.3,-62.8,45.2`
+- Uses GeoJSON source + circle layer (not individual markers) for performance
 
 ## What's not built yet
 - User accounts / Supabase Auth
