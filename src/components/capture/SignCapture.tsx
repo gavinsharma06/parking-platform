@@ -28,6 +28,21 @@ interface Location {
   lng: number;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function fetchAnalysis(base64: string): Promise<ExtractedParkingData> {
+  const res = await fetch("/api/analyse-sign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: base64 }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SignCapture() {
@@ -125,20 +140,8 @@ export default function SignCapture() {
     if (!photo) return;
     setError(null);
     setStatus("analysing");
-
     try {
-      const res = await fetch("/api/analyse-sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: photo.base64 }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
-      }
-
-      const data: ExtractedParkingData = await res.json();
+      const data = await fetchAnalysis(photo.base64);
       setExtracted(data);
       setStatus("analysed");
     } catch (e) {
@@ -155,26 +158,37 @@ export default function SignCapture() {
     openCamera();
   }, [photo, openCamera]);
 
-  // ── Step 5: submit ────────────────────────────────────────────────────────
+  // ── Step 5: submit (auto-analyses first if not done yet) ──────────────────
 
   const submit = useCallback(async () => {
     if (!photo || !location) return;
     setError(null);
-    setStatus("submitting");
 
+    let analysedData = extracted;
+    if (!analysedData) {
+      setStatus("analysing");
+      try {
+        analysedData = await fetchAnalysis(photo.base64);
+        setExtracted(analysedData);
+      } catch {
+        // Analysis failed — proceed with upload anyway, without OCR data
+      }
+    }
+
+    setStatus("submitting");
     try {
       await uploadSignSubmission({
         imageBlob:  photo.blob,
         latitude:   location.lat,
         longitude:  location.lng,
         deviceMetadata: { userAgent: navigator.userAgent, capturedAt: new Date().toISOString() },
-        extractedData: extracted ?? undefined,
+        extractedData: analysedData ?? undefined,
       });
       URL.revokeObjectURL(photo.previewUrl);
       setPhoto(null); setLocation(null); setExtracted(null);
       setStatus("success");
     } catch {
-      setStatus(extracted ? "analysed" : "ready");
+      setStatus(analysedData ? "analysed" : "ready");
       setError("Upload failed. Check your connection and try again.");
     }
   }, [photo, location, extracted]);

@@ -73,6 +73,17 @@ function parseDays(text) {
       else { for (let d=a;d<=6;d++) days.add(d); for (let d=0;d<=b;d++) days.add(d); }
     }
   }
+  // Space-separated day pairs as a range (e.g. "MON SAT" = Mon–Sat)
+  if (days.size===0) {
+    const KEYS = Object.keys(DAY_MAP).join("|");
+    for (const m of u.matchAll(new RegExp(`\\b(${KEYS})\\s+(${KEYS})\\b`, "gi"))) {
+      const a=DAY_MAP[m[1]], b=DAY_MAP[m[2]];
+      if (a!==undefined && b!==undefined && a!==b) {
+        if (a<b) { for(let d=a;d<=b;d++) days.add(d); }
+        else     { for(let d=a;d<=6;d++) days.add(d); for(let d=0;d<=b;d++) days.add(d); }
+      }
+    }
+  }
   if (days.size===0) for (const m of u.matchAll(DAY_RE)) { const n=DAY_MAP[m[1]]; if(n!==undefined) days.add(n); }
   return days.size>0 ? [...days].sort((a,b)=>a-b) : null;
 }
@@ -107,7 +118,7 @@ function classifySegment(text) {
   if (/\bPAYMENT\s+REQUIRED\b|\bPAY\s+(?:ZONE|STATION)\b/.test(u)) return {type:"paid",prohibited:false,tow:false};
   if (/\bFREE\s+PARKING\b/.test(u)) return {type:"free",prohibited:false,tow:false};
   if (/\$|\bPER\s+H/.test(u)) return {type:"paid",prohibited:false,tow:false};
-  if (/\b\d+\s*(?:HOUR|HR|MIN)\b/.test(u)) return {type:"free",prohibited:false,tow:false};
+  if (/\b\d+\s*H(?:OUR|R)?\b(?!\s*[-–]\s*\d)|\b\d+\s*MIN\b/.test(u)) return {type:"free",prohibited:false,tow:false};
   return null;
 }
 
@@ -131,7 +142,7 @@ function normalizeRaw(raw) {
 }
 
 function parseTimeLimit(text) {
-  const hourM = text.match(/(?<!\d)(\d+(?:\.\d+)?)\s*H(?:OUR|R)S?\b(?!\s*[-–]\s*\d)/i);
+  const hourM = text.match(/(?<!\d)(\d+(?:\.\d+)?)\s*H(?:OUR|R)?\b(?!\s*[-–]\s*\d)/i);
   const minM  = text.match(/(\d+)\s*MIN(?:UTE)?S?\b/i);
   if (hourM) return Math.round(parseFloat(hourM[1]) * 60);
   if (minM)  return parseInt(minM[1], 10);
