@@ -209,6 +209,25 @@ export const RULE_TYPE_LABEL: Record<RuleType, string> = {
   tow_away:       "Tow away",
 };
 
+// ─── HRM on-street paid parking default ──────────────────────────────────────
+// Halifax on-street metered parking is enforced Mon–Fri 8AM–6PM only.
+// Free after 6PM on weekdays, all day weekends, and most holidays.
+// Source: HRM parking bylaws + Downtown Halifax Business Commission.
+// Applied as a fallback for paid spots that have no explicit schedule in the DB.
+export const HALIFAX_DEFAULT_PAID_RULES: ParkingRule[] = [
+  {
+    rule_type:          "paid",
+    is_prohibited:      false,
+    days:               [1, 2, 3, 4, 5], // Mon–Fri
+    time_window:        { start: "08:00", end: "18:00" },
+    time_limit_minutes: null,
+    cost_per_hour:      null,
+    permit_zone:        null,
+    tow_away:           false,
+    raw_text:           "Payment required 8AM–6PM Mon–Fri (HRM on-street default)",
+  },
+];
+
 // ─── Derive legacy parking_type from rules ────────────────────────────────────
 
 export function deriveParkingType(rules: ParkingRule[]): "free" | "paid" | "permit" | "accessible" | "unknown" {
