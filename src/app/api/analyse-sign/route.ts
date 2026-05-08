@@ -52,6 +52,18 @@ function parseDays(text: string): number[] | null {
     }
   }
 
+  // Space-separated day pairs treated as a range (e.g. "MON SAT" on arrow signs = Mon–Sat)
+  if (days.size === 0) {
+    for (const m of u.matchAll(new RegExp(`\\b(${DAY_KEYS})\\s+(${DAY_KEYS})\\b`, "gi"))) {
+      const a = DAY_MAP[m[1]];
+      const b = DAY_MAP[m[2]];
+      if (a !== undefined && b !== undefined && a !== b) {
+        if (a < b) { for (let d = a; d <= b; d++) days.add(d); }
+        else        { for (let d = a; d <= 6; d++) days.add(d); for (let d = 0; d <= b; d++) days.add(d); }
+      }
+    }
+  }
+
   // Individual day names (only if no range matched them already)
   if (days.size === 0) {
     for (const m of u.matchAll(DAY_RE)) {
@@ -103,8 +115,9 @@ function parseCost(text: string): number | null {
 }
 
 function parseTimeLimit(text: string): number | null {
-  // Negative lookahead prevents "8HR-6PM" being read as an 8-hour limit
-  const hourM = text.match(/(?<!\d)(\d+(?:\.\d+)?)\s*H(?:OUR|R)S?\b(?!\s*[-–]\s*\d)/i);
+  // Suffix optional: matches "1H", "1HR", "1HOUR", "1 HR", "2 HOURS"
+  // Negative lookahead prevents "8H-6PM" from being read as an 8-hour limit
+  const hourM = text.match(/(?<!\d)(\d+(?:\.\d+)?)\s*H(?:OUR|R)?\b(?!\s*[-–]\s*\d)/i);
   const minM  = text.match(/(\d+)\s*MIN(?:UTE)?S?\b/i);
   if (hourM) return Math.round(parseFloat(hourM[1]) * 60);
   if (minM)  return parseInt(minM[1], 10);
@@ -232,8 +245,8 @@ function classifySegment(text: string): {
   if (/\$|\bPER\s+H(?:OUR|R)\b/.test(u)) {
     return { rule_type: "paid", is_prohibited: false, tow_away: false };
   }
-  // Time-limited with no cost → free
-  if (/\b\d+\s*(?:HOUR|HR|MIN)\b/.test(u)) {
+  // Time-limited with no cost → free (matches "1H", "1HR", "1 HOUR", "30 MIN")
+  if (/\b\d+\s*H(?:OUR|R)?\b(?!\s*[-–]\s*\d)|\b\d+\s*MIN\b/.test(u)) {
     return { rule_type: "free", is_prohibited: false, tow_away: false };
   }
 
