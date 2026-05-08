@@ -106,12 +106,13 @@ function formatTimeLimit(minutes: number): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ParkingMap() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<mapboxgl.Map | null>(null);
-  const mapReady     = useRef(false);
-  const spotsRef     = useRef<Spot[]>([]);
-  const searchTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchRef    = useRef<HTMLDivElement>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<mapboxgl.Map | null>(null);
+  const mapReady        = useRef(false);
+  const spotsRef        = useRef<Spot[]>([]);
+  const searchTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRef       = useRef<HTMLDivElement>(null);
+  const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const [spots,       setSpots]       = useState<Spot[]>([]);
   const [selected,    setSelected]    = useState<Spot | null>(null);
@@ -270,7 +271,11 @@ export default function ParkingMap() {
     map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = ""; });
     map.on("click", (e) => {
       const features = map.queryRenderedFeatures(e.point, { layers: ["spots", "clusters"] });
-      if (!features.length) setSelected(null);
+      if (!features.length) {
+        setSelected(null);
+        searchMarkerRef.current?.remove();
+        searchMarkerRef.current = null;
+      }
     });
 
     mapRef.current = map;
@@ -322,7 +327,13 @@ export default function ParkingMap() {
     setQuery(r.place_name.split(",")[0]);
     setResults([]);
     setShowResults(false);
-    mapRef.current?.flyTo({ center: r.center, zoom: 15.5, duration: 900 });
+    const map = mapRef.current;
+    if (!map) return;
+    searchMarkerRef.current?.remove();
+    map.flyTo({ center: r.center, zoom: 15.5, duration: 900 });
+    searchMarkerRef.current = new mapboxgl.Marker({ color: "#4f46e5" })
+      .setLngLat(r.center)
+      .addTo(map);
   }, []);
 
   useEffect(() => {
