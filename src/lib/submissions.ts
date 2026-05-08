@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { isHalifaxLocation } from "./validation";
-import type { ExtractedParkingData } from "@/app/api/analyse-sign/route";
+import type { ExtractedParkingData } from "@/lib/parking-rules";
 
 export async function uploadSignSubmission({
   imageBlob,

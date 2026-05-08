@@ -23,6 +23,40 @@ Community-powered parking discovery app for Halifax, Nova Scotia. Users photogra
 ## Vision API integration
 - Entry point: `src/app/api/analyse-sign/route.ts`
 - Calls `TEXT_DETECTION` feature (not `DOCUMENT_TEXT_DETECTION` — parking signs are short, sparse text)
+- Returns `ExtractedParkingData` (defined in `src/lib/parking-rules.ts`):
+  - `rules: ParkingRule[]` — structured array, one entry per sign on the pole (primary output)
+  - `raw_text: string` — full OCR string for display/debugging
+  - `confidence: number` — 0.1–1.0 heuristic based on how much structure was extracted
+  - Legacy fields (`parking_type`, `time_limit_minutes`, `cost_per_hour`, `schedule`) — kept for backward compat
+- Images are sent as base64 JPEG in the request body
+
+### Parser pipeline (`src/app/api/analyse-sign/route.ts`)
+The parser runs in four stages:
+
+1. **`normalizeRaw(raw)`** — pre-joins keyword fragments Vision commonly splits across lines:
+   `TOW\nAWAY` → `TOW AWAY`, `PAY\nZONE` → `PAY ZONE`, `STREET\nCLEANING` → `STREET CLEANING`, etc.
+
+2. **`segmentText(raw)`** — splits OCR text into per-sign segments using `SIGN_ANCHORS` regex array.
+   - Noise lines (lone `P`, `®`, symbols) are filtered before splitting.
+   - Time/day-only header lines that appear before the first anchor (e.g. `7AM 9AM` above a visual no-stopping arrow) are buffered in `pending` and prepended to the next segment so their time window is found first.
+   - Day-only lines (`MON-FRI`) are also buffered the same way.
+
+3. **`parseSegment(text)`** — classifies each segment and extracts:
+   - `rule_type` + `is_prohibited` + `tow_away` via `classifySegment()`
+   - `days: number[] | null` — `parseDays()` normalises the `IMON-FRI` OCR artifact (leading `I` before day abbreviations) before matching
+   - `time_window: {start, end} | null` — `parseTimeWindow()` tries dash-separated first, then space-separated fallback (`12AM 8AM`); picks whichever match starts earliest in the text so a pending time header wins over a later time range from a different sign
+   - `time_limit_minutes: number | null` — `parseTimeLimit()` matches `3 HR`, `3HR`, `3 HOUR`, `30 MIN`, etc.
+   - `cost_per_hour`, `permit_zone`
+
+4. **`deduplicateRules(rules)`** — removes bare duplicate rules (same `rule_type`, no time/day/cost/permit info) when a richer rule of the same type already exists. Prevents `PAY ZONE` label text from generating a phantom paid-24/7 rule alongside a properly-timestamped `PAYMENT REQUIRED` rule.
+
+### Batch OCR test script
+```
+node scripts/run-ocr-batch.js <folder>
+node scripts/run-ocr-batch.js parkingsigns
+```
+Runs the full parser pipeline against every image in a folder and prints raw OCR + extracted rules. The inline parser in this script must be kept in sync with `route.ts`.
+
 - Returns: `{ parking_type, time_limit_minutes, cost_per_hour, schedule, raw_text }`
 - Parser handles Halifax-specific patterns: time limits, cost per hour, zone permits, accessible spots, schedule ranges
 - Images are sent as base64 JPEG in the request body
@@ -101,6 +135,48 @@ The planned training work is a **custom image classifier** to validate that a su
 - Model training requires billing to be enabled (not just free trial credits in some cases)
 - TFLite export allows running inference on-device (in the browser via TensorFlow.js) to pre-filter before upload — good for cost reduction
 
+## Type system (`src/lib/parking-rules.ts`)
+Central module — import all parking types and helpers from here, never from route files.
+
+Key types:
+- `ParkingRule` — `{ rule_type, is_prohibited, days: number[]|null, time_window: {start,end}|null, tow_away, cost_per_hour, time_limit_minutes, permit_zone, raw_text }`
+- `ExtractedParkingData` — `{ rules: ParkingRule[], raw_text, confidence, ...legacy fields }`
+- `SpotSchedule` — `{ rules: ParkingRule[] }` — stored as JSONB in `parking_spots.schedule`
+
+Key exports: `evaluateSpot(rules, now)`, `RULE_TYPE_COLOR`, `RULE_TYPE_LABEL`, `STATUS_COLOR`, `STATUS_LABEL`, `formatTimeWindow`, `formatDays`, `ruleLabel`, `deriveParkingType`, `haversineMetres`
+
+## Supabase schema (current)
+- `parking_spots` — live spots shown on map. Columns include `schedule JSONB` (stores `SpotSchedule`) alongside legacy flat columns.
+- `sign_submissions` — raw community submissions awaiting admin review (image_path, latitude, longitude, device_metadata, extracted_data JSONB, status, reviewer_notes, submitted_at, parking_spot_id)
+- Storage bucket: `parking-signs` (private) — submission images; signed URLs generated server-side via service role client
+
+### Supabase clients
+- `src/lib/supabase.ts` — public anon client for client-side use
+- `src/lib/supabase-server.ts` — `createServiceRoleClient()` using `SUPABASE_SECRET_KEY` — server-side API routes only, bypasses RLS
+
+### Env vars
+```
+NEXT_PUBLIC_MAPBOX_TOKEN
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY
+GOOGLE_VISION_API_KEY
+```
+
+## Admin dashboard (`/admin`)
+- `src/app/admin/page.tsx` — server component wrapper
+- `src/app/admin/AdminDashboard.tsx` — client component
+- `src/app/api/admin/submissions/route.ts` — GET: lists all submissions + signed image URLs (service role)
+- `src/app/api/admin/submissions/[id]/route.ts` — PATCH approve/reject. Approve: haversine check within 15 m for existing spot; merges `schedule.rules` if nearby spot exists, else creates new spot.
+- **Not protected** — add Next.js middleware before launch
+
+## Map (`src/components/map/ParkingMap.tsx`)
+- Centered on downtown Halifax: `[-63.5788, 44.6476]`, zoom 14
+- Fetches `schedule` column; `computeSpots(raw, now)` runs `evaluateSpot()` per spot → `current_status`, `current_color`, `current_label` stored as GeoJSON properties
+- Circle layer color: `["get", "current_color"]` (data-driven, not a static match expression)
+- Colors refresh every 5 minutes via `setInterval`
+- Bottom sheet lists all rules from `spot.schedule.rules`, highlights active rule with "ACTIVE NOW" badge
+- Geocoder restricted to HRM bounding box: `-64.5,44.3,-62.8,45.2`
 ## Supabase schema (current)
 - `parking_spots` — live spots shown on map (id, latitude, longitude, parking_type, street_name, from_street, to_street, time_limit_minutes, cost_per_hour, notes)
 - `sign_submissions` — raw community submissions awaiting admin review (id, image_path, latitude, longitude, device_metadata, extracted_data, status, reviewer_notes, submitted_at, parking_spot_id)
@@ -117,7 +193,7 @@ The planned training work is a **custom image classifier** to validate that a su
 - Community verification (upvotes on spots)
 - Admin route protection (currently open — add middleware before launch)
 - Google Maps directions deep-link in marker popup
-- Custom AutoML classifier for sign validation
+- Custom AutoML classifier for sign validation (pre-filter before OCR)
 - Real HRM parking data import (script exists at `scripts/importParkingData.js`, hasn't been run against prod)
 
 <!-- END:project-context -->

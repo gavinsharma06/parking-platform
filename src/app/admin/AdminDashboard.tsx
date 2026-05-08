@@ -2,14 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
-
-type ExtractedData = {
-  parking_type?: string;
-  time_limit_minutes?: number | null;
-  cost_per_hour?: number | null;
-  schedule?: string | null;
-  raw_text?: string;
-};
+import { ruleLabel, RULE_TYPE_COLOR, RULE_TYPE_LABEL } from "@/lib/parking-rules";
+import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
 
 type Submission = {
   id: string;
@@ -17,7 +11,7 @@ type Submission = {
   image_url: string | null;
   latitude: number;
   longitude: number;
-  extracted_data: ExtractedData | null;
+  extracted_data: ExtractedParkingData | null;
   status: "pending_review" | "approved" | "rejected";
   reviewer_notes: string | null;
   submitted_at: string;
@@ -26,26 +20,18 @@ type Submission = {
 
 const STATUS_BADGE: Record<string, string> = {
   pending_review: "bg-yellow-100 text-yellow-800",
-  approved: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-};
-
-const PARKING_TYPE_COLOUR: Record<string, string> = {
-  free: "text-green-700",
-  paid: "text-blue-700",
-  permit: "text-orange-700",
-  accessible: "text-purple-700",
-  unknown: "text-gray-500",
+  approved:       "bg-green-100 text-green-800",
+  rejected:       "bg-red-100 text-red-800",
 };
 
 export default function AdminDashboard() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading,     setLoading]     = useState(true);
   const [filter, setFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("pending_review");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [acting, setActing] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notes,    setNotes]    = useState<Record<string, string>>({});
+  const [acting,   setActing]   = useState<string | null>(null);
+  const [error,    setError]    = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,8 +39,7 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/submissions");
       if (!res.ok) throw new Error(await res.text());
-      const data: Submission[] = await res.json();
-      setSubmissions(data);
+      setSubmissions(await res.json());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load submissions");
     } finally {
@@ -76,6 +61,10 @@ export default function AdminDashboard() {
         const body = await res.json();
         throw new Error(body.error ?? "Request failed");
       }
+      const result = await res.json();
+      if (result.merged) {
+        alert(`Approved and merged into existing nearby spot (${result.parking_spot_id})`);
+      }
       await load();
       setExpanded(null);
     } catch (e) {
@@ -90,10 +79,10 @@ export default function AdminDashboard() {
     : submissions.filter((s) => s.status === filter);
 
   const counts = {
-    all: submissions.length,
+    all:            submissions.length,
     pending_review: submissions.filter((s) => s.status === "pending_review").length,
-    approved: submissions.filter((s) => s.status === "approved").length,
-    rejected: submissions.filter((s) => s.status === "rejected").length,
+    approved:       submissions.filter((s) => s.status === "approved").length,
+    rejected:       submissions.filter((s) => s.status === "rejected").length,
   };
 
   return (
@@ -111,9 +100,7 @@ export default function AdminDashboard() {
             }`}
           >
             {f === "pending_review" ? "Pending" : f.charAt(0).toUpperCase() + f.slice(1)}
-            <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">
-              {counts[f]}
-            </span>
+            <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">{counts[f]}</span>
           </button>
         ))}
         <button
@@ -139,9 +126,12 @@ export default function AdminDashboard() {
       ) : (
         <div className="space-y-4">
           {visible.map((sub) => {
-            const isOpen = expanded === sub.id;
-            const ext = sub.extracted_data;
+            const isOpen  = expanded === sub.id;
+            const rules: ParkingRule[] = sub.extracted_data?.rules ?? [];
             const mapsUrl = `https://www.google.com/maps?q=${sub.latitude},${sub.longitude}`;
+
+            // Summary chips from first rule
+            const firstRule = rules[0];
 
             return (
               <div
@@ -153,7 +143,6 @@ export default function AdminDashboard() {
                   className="w-full text-left px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors"
                   onClick={() => setExpanded(isOpen ? null : sub.id)}
                 >
-                  {/* Thumbnail */}
                   <div className="h-16 w-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
                     {sub.image_url ? (
                       <Image
@@ -165,42 +154,42 @@ export default function AdminDashboard() {
                         unoptimized
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-gray-300 text-2xl">
-                        📷
-                      </div>
+                      <div className="flex h-full items-center justify-center text-gray-300 text-2xl">📷</div>
                     )}
                   </div>
 
-                  {/* Summary */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[sub.status]}`}
-                      >
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[sub.status]}`}>
                         {sub.status.replace("_", " ")}
                       </span>
-                      {ext?.parking_type && (
-                        <span
-                          className={`text-sm font-semibold ${PARKING_TYPE_COLOUR[ext.parking_type] ?? "text-gray-600"}`}
-                        >
-                          {ext.parking_type}
-                        </span>
+                      {rules.length > 0 ? (
+                        rules.slice(0, 3).map((r, i) => (
+                          <span
+                            key={i}
+                            className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                            style={{ background: RULE_TYPE_COLOR[r.rule_type] }}
+                          >
+                            {RULE_TYPE_LABEL[r.rule_type]}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400">No OCR data</span>
                       )}
-                      {ext?.time_limit_minutes && (
-                        <span className="text-xs text-gray-500">
-                          {ext.time_limit_minutes} min
-                        </span>
-                      )}
-                      {ext?.cost_per_hour != null && ext.cost_per_hour > 0 && (
-                        <span className="text-xs text-gray-500">
-                          ${ext.cost_per_hour}/hr
-                        </span>
+                      {rules.length > 3 && (
+                        <span className="text-xs text-gray-400">+{rules.length - 3} more</span>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-gray-400 truncate">
                       {sub.latitude.toFixed(6)}, {sub.longitude.toFixed(6)} ·{" "}
                       {new Date(sub.submitted_at).toLocaleString()}
                     </p>
+                    {firstRule?.time_window && (
+                      <p className="text-xs text-gray-500 truncate">
+                        {firstRule.time_window.start}–{firstRule.time_window.end}
+                        {firstRule.days ? ` · ${firstRule.days.map((d) => ["Su","Mo","Tu","We","Th","Fr","Sa"][d]).join(",")}` : ""}
+                      </p>
+                    )}
                   </div>
 
                   <span className="text-gray-400 text-sm">{isOpen ? "▲" : "▼"}</span>
@@ -212,9 +201,7 @@ export default function AdminDashboard() {
                     <div className="grid gap-5 sm:grid-cols-2">
                       {/* Photo */}
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                          Photo
-                        </p>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Photo</p>
                         {sub.image_url ? (
                           <a href={sub.image_url} target="_blank" rel="noreferrer">
                             <Image
@@ -237,9 +224,7 @@ export default function AdminDashboard() {
                       <div className="space-y-4">
                         {/* GPS */}
                         <div>
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                            Location
-                          </p>
+                          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Location</p>
                           <p className="text-sm text-gray-700">
                             {sub.latitude.toFixed(6)}, {sub.longitude.toFixed(6)}
                           </p>
@@ -253,42 +238,51 @@ export default function AdminDashboard() {
                           </a>
                         </div>
 
-                        {/* Extracted */}
-                        <div>
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                            Extracted Data
-                          </p>
-                          {ext ? (
-                            <table className="w-full text-sm">
-                              <tbody className="divide-y divide-gray-100">
-                                {[
-                                  ["Type", ext.parking_type ?? "—"],
-                                  ["Time limit", ext.time_limit_minutes ? `${ext.time_limit_minutes} min` : "—"],
-                                  ["Cost", ext.cost_per_hour != null ? `$${ext.cost_per_hour}/hr` : "—"],
-                                  ["Schedule", ext.schedule ?? "—"],
-                                ].map(([label, value]) => (
-                                  <tr key={label}>
-                                    <td className="py-1 pr-3 text-gray-400 w-24">{label}</td>
-                                    <td className="py-1 text-gray-700">{value}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          ) : (
-                            <p className="text-sm text-gray-400">No OCR data — manual review needed</p>
-                          )}
-                        </div>
-
-                        {/* Raw text */}
-                        {ext?.raw_text && (
+                        {/* Structured rules */}
+                        {rules.length > 0 ? (
                           <div>
-                            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                              Raw OCR Text
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                              Extracted Rules ({rules.length} sign{rules.length !== 1 ? "s" : ""} detected)
                             </p>
-                            <pre className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 whitespace-pre-wrap font-mono">
-                              {ext.raw_text}
-                            </pre>
+                            <div className="space-y-2">
+                              {rules.map((rule, i) => (
+                                <div key={i} className="flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                                  <span
+                                    className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                                    style={{ background: RULE_TYPE_COLOR[rule.rule_type] }}
+                                  />
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-800">
+                                      {RULE_TYPE_LABEL[rule.rule_type]}
+                                      {rule.tow_away && " (tow-away)"}
+                                    </p>
+                                    <p className="text-xs text-gray-500">{ruleLabel(rule)}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
+                        ) : (
+                          <p className="text-sm text-gray-400">No OCR data — manual review needed</p>
+                        )}
+
+                        {/* Raw OCR text */}
+                        {sub.extracted_data?.raw_text && (
+                          <details className="rounded-lg border border-gray-100">
+                            <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-600">
+                              Raw OCR text
+                            </summary>
+                            <pre className="px-3 pb-3 text-xs text-gray-500 whitespace-pre-wrap font-mono">
+                              {sub.extracted_data.raw_text}
+                            </pre>
+                          </details>
+                        )}
+
+                        {/* Confidence */}
+                        {sub.extracted_data?.confidence != null && (
+                          <p className="text-xs text-gray-400">
+                            Parser confidence: {Math.round(sub.extracted_data.confidence * 100)}%
+                          </p>
                         )}
                       </div>
                     </div>
@@ -303,10 +297,8 @@ export default function AdminDashboard() {
                           <textarea
                             rows={2}
                             value={notes[sub.id] ?? ""}
-                            onChange={(e) =>
-                              setNotes((prev) => ({ ...prev, [sub.id]: e.target.value }))
-                            }
-                            placeholder="Add any notes before approving or rejecting…"
+                            onChange={(e) => setNotes((prev) => ({ ...prev, [sub.id]: e.target.value }))}
+                            placeholder="Notes before approving or rejecting…"
                             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:border-indigo-400 focus:outline-none"
                           />
                         </div>
@@ -329,12 +321,9 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {/* Already reviewed */}
                     {sub.status !== "pending_review" && sub.reviewer_notes && (
                       <div className="border-t border-gray-100 pt-4">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                          Reviewer Notes
-                        </p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Reviewer Notes</p>
                         <p className="mt-1 text-sm text-gray-600">{sub.reviewer_notes}</p>
                       </div>
                     )}
