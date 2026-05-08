@@ -138,7 +138,9 @@ function normalizeRaw(raw) {
     .replace(/\bNO\s*\n\s*STANDING/gi,      "NO STANDING")
     .replace(/\bSTREET\s*\n\s*CLEANING/gi,  "STREET CLEANING")
     .replace(/\bPAYMENT\s*\n\s*REQUIRED/gi, "PAYMENT REQUIRED")
-    .replace(/\bFREE\s*\n\s*PARKING/gi,     "FREE PARKING");
+    .replace(/\bFREE\s*\n\s*PARKING/gi,     "FREE PARKING")
+    .replace(/\bB([AP]M)\b/gi, "8$1")
+    .replace(/\bG([AP]M)\b/gi, "6$1");
 }
 
 function parseTimeLimit(text) {

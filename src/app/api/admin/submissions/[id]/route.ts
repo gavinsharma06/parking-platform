@@ -5,6 +5,24 @@ import type { ParkingRule, SpotSchedule, ExtractedParkingData } from "@/lib/park
 
 const MERGE_RADIUS_METRES = 15;
 
+// ─── Reverse geocoding ────────────────────────────────────────────────────────
+
+async function fetchStreetName(lat: number, lng: number): Promise<string | null> {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json` +
+      `?access_token=${token}&types=address&limit=1`,
+    );
+    const data = await res.json();
+    const name: string | undefined = data.features?.[0]?.place_name;
+    return name ? name.split(",")[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function PATCH(
@@ -46,13 +64,16 @@ export async function PATCH(
     const newRules: ParkingRule[] = extracted?.rules ?? [];
     const parking_type = extracted?.parking_type ?? deriveParkingType(newRules);
 
+    // Reverse-geocode once — stored on the spot so map taps never need to call Mapbox
+    const streetName = await fetchStreetName(sub.latitude, sub.longitude);
+
     // Check for an existing parking spot within MERGE_RADIUS_METRES
     const latDelta = MERGE_RADIUS_METRES / 111_320;
     const lngDelta = MERGE_RADIUS_METRES / (111_320 * Math.cos((sub.latitude * Math.PI) / 180));
 
     const { data: nearby } = await supabase
       .from("parking_spots")
-      .select("id, latitude, longitude, schedule")
+      .select("id, latitude, longitude, schedule, street_name")
       .gte("latitude",  sub.latitude  - latDelta)
       .lte("latitude",  sub.latitude  + latDelta)
       .gte("longitude", sub.longitude - lngDelta)
@@ -80,6 +101,8 @@ export async function PATCH(
           schedule:          { rules: merged },
           parking_type:      deriveParkingType(merged),
           confidence_score:  Math.min((extracted?.confidence ?? 0.7), 1),
+          // Fill in street_name if the existing spot doesn't have one yet
+          ...(closest.street_name == null && streetName ? { street_name: streetName } : {}),
         })
         .eq("id", closest.id);
 
@@ -90,9 +113,10 @@ export async function PATCH(
       const { data: spot, error: insertErr } = await supabase
         .from("parking_spots")
         .insert({
-          latitude:          sub.latitude,
-          longitude:         sub.longitude,
+          latitude:           sub.latitude,
+          longitude:          sub.longitude,
           parking_type,
+          street_name:        streetName,
           time_limit_minutes: extracted?.time_limit_minutes ?? null,
           cost_per_hour:      extracted?.cost_per_hour      ?? null,
           schedule:           { rules: newRules },

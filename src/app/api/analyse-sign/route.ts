@@ -156,9 +156,11 @@ const DAY_ONLY_RE  = new RegExp(`^(?:(?:${DAY_ABBREVS})[\\s,–-]*)+$`, "i");
 // Single chars / parking-symbol lines that carry no parseable info
 const NOISE_LINE_RE = /^P$|^[^A-Za-z0-9]+$/;
 
-// Join keyword fragments that Vision commonly splits across lines
+// Join keyword fragments that Vision commonly splits across lines,
+// and fix common digit-letter OCR misreads that appear before AM/PM.
 function normalizeRaw(raw: string): string {
   return raw
+    // Multi-line keyword joins
     .replace(/\bTOW\s*\n\s*AWAY/gi,       "TOW AWAY")
     .replace(/\bPAY\s*\n\s*ZONE/gi,        "PAY ZONE")
     .replace(/\bNO\s*\n\s*PARKING/gi,      "NO PARKING")
@@ -166,7 +168,12 @@ function normalizeRaw(raw: string): string {
     .replace(/\bNO\s*\n\s*STANDING/gi,     "NO STANDING")
     .replace(/\bSTREET\s*\n\s*CLEANING/gi, "STREET CLEANING")
     .replace(/\bPAYMENT\s*\n\s*REQUIRED/gi,"PAYMENT REQUIRED")
-    .replace(/\bFREE\s*\n\s*PARKING/gi,    "FREE PARKING");
+    .replace(/\bFREE\s*\n\s*PARKING/gi,    "FREE PARKING")
+    // Digit-letter substitutions before AM/PM (Vision OCR artifacts)
+    // "8" misread as "B" → BAM→8AM, BPM→8PM
+    .replace(/\bB([AP]M)\b/gi, "8$1")
+    // "6" misread as "G" → GAM→6AM, GPM→6PM
+    .replace(/\bG([AP]M)\b/gi, "6$1");
 }
 
 function segmentText(raw: string): string[] {

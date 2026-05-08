@@ -114,12 +114,13 @@ export default function ParkingMap() {
   const searchRef       = useRef<HTMLDivElement>(null);
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  const [spots,       setSpots]       = useState<Spot[]>([]);
-  const [selected,    setSelected]    = useState<Spot | null>(null);
-  const [query,       setQuery]       = useState("");
-  const [results,     setResults]     = useState<SearchResult[]>([]);
-  const [searching,   setSearching]   = useState(false);
-  const [showResults, setShowResults] = useState(false);
+  const [spots,            setSpots]            = useState<Spot[]>([]);
+  const [selected,         setSelected]         = useState<Spot | null>(null);
+  const [resolvedStreet,   setResolvedStreet]   = useState<string | null>(null);
+  const [query,            setQuery]            = useState("");
+  const [results,          setResults]          = useState<SearchResult[]>([]);
+  const [searching,        setSearching]        = useState(false);
+  const [showResults,      setShowResults]      = useState(false);
 
   // ── Fetch spots ──────────────────────────────────────────────────────────
 
@@ -141,6 +142,24 @@ export default function ParkingMap() {
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // ── Reverse-geocode street name for spots that don't have one stored ─────
+
+  useEffect(() => {
+    setResolvedStreet(null);
+    if (!selected || selected.street_name) return;
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+    fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${selected.longitude},${selected.latitude}.json` +
+      `?access_token=${token}&types=address&limit=1`,
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        const name: string | undefined = data.features?.[0]?.place_name;
+        if (name) setResolvedStreet(name.split(",")[0]);
+      })
+      .catch(() => {});
+  }, [selected]);
 
   // ── Add / update GeoJSON source & layers ──────────────────────────────────
 
@@ -447,14 +466,25 @@ export default function ParkingMap() {
             </div>
 
             {/* Street info */}
-            {selected.street_name && (
-              <div>
-                <p className="text-base font-bold text-gray-900">{selected.street_name}</p>
-                {selected.from_street && selected.to_street && (
-                  <p className="mt-0.5 text-sm text-gray-500">{selected.from_street} → {selected.to_street}</p>
-                )}
-              </div>
-            )}
+            {(() => {
+              const name = selected.street_name ?? resolvedStreet;
+              if (name) {
+                return (
+                  <div>
+                    <p className="text-base font-bold text-gray-900">{name}</p>
+                    {selected.from_street && selected.to_street && (
+                      <p className="mt-0.5 text-sm text-gray-500">
+                        {selected.from_street} → {selected.to_street}
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+              if (!selected.street_name && !resolvedStreet) {
+                return <p className="text-sm text-gray-400 animate-pulse">Looking up address…</p>;
+              }
+              return null;
+            })()}
 
             {/* Legacy chips (shown when no structured rules) */}
             {rules.length === 0 && (
