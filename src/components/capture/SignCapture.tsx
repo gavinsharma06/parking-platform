@@ -53,6 +53,9 @@ export default function SignCapture() {
     setError(null);
     setStatus("camera");
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("insecure-context");
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
@@ -61,10 +64,13 @@ export default function SignCapture() {
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (e) {
       setStatus("idle");
+      const name = e instanceof DOMException ? e.name : (e instanceof Error ? e.message : "");
       setError(
-        e instanceof DOMException && e.name === "NotAllowedError"
-          ? "Camera permission denied. Tap Allow in your browser's permission prompt, then try again."
-          : "Could not start camera. Make sure no other app is using it.",
+        name === "insecure-context"
+          ? "Camera requires a secure connection (HTTPS). Open this page using the https:// address shown in the server terminal."
+          : name === "NotAllowedError"
+            ? "Camera permission denied. Tap Allow in your browser's permission prompt, then try again."
+            : "Could not start camera. Make sure no other app is using it.",
       );
     }
   }, []);
