@@ -14,6 +14,7 @@ import {
   STATUS_COLOR,
   RULE_TYPE_COLOR,
   RULE_TYPE_LABEL,
+  HALIFAX_DEFAULT_PAID_RULES,
 } from "@/lib/parking-rules";
 import type { SpotSchedule, ParkingRule } from "@/lib/parking-rules";
 
@@ -53,13 +54,13 @@ type SearchResult = {
 
 const SAMPLE_SPOTS: Omit<Spot, "current_status" | "current_color" | "current_label">[] = [
   { id: "s1", latitude: 44.6488, longitude: -63.5752, parking_type: "free",       street_name: "Spring Garden Rd", from_street: "Queen St",     to_street: "Park St",   time_limit_minutes: 120,  cost_per_hour: null, notes: null, schedule: null },
-  { id: "s2", latitude: 44.6468, longitude: -63.5729, parking_type: "paid",       street_name: "Barrington St",    from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.50, notes: null, schedule: null },
+  { id: "s2", latitude: 44.6468, longitude: -63.5729, parking_type: "paid",       street_name: "Barrington St",    from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.50, notes: null, schedule: { rules: HALIFAX_DEFAULT_PAID_RULES } },
   { id: "s3", latitude: 44.6502, longitude: -63.5771, parking_type: "permit",     street_name: "Robie St",         from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: "Zone A permit required", schedule: null },
   { id: "s4", latitude: 44.6479, longitude: -63.5810, parking_type: "free",       street_name: "Queen St",         from_street: "Brunswick St", to_street: "Hollis St", time_limit_minutes: 60,   cost_per_hour: null, notes: null, schedule: null },
-  { id: "s5", latitude: 44.6455, longitude: -63.5760, parking_type: "paid",       street_name: "Granville St",     from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 3.00, notes: null, schedule: null },
+  { id: "s5", latitude: 44.6455, longitude: -63.5760, parking_type: "paid",       street_name: "Granville St",     from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 3.00, notes: null, schedule: { rules: HALIFAX_DEFAULT_PAID_RULES } },
   { id: "s6", latitude: 44.6510, longitude: -63.5740, parking_type: "accessible", street_name: "Brunswick St",     from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: null, schedule: null },
   { id: "s7", latitude: 44.6440, longitude: -63.5790, parking_type: "unknown",    street_name: "Lower Water St",   from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: null, notes: null, schedule: null },
-  { id: "s8", latitude: 44.6495, longitude: -63.5800, parking_type: "paid",       street_name: "Hollis St",        from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.00, notes: null, schedule: null },
+  { id: "s8", latitude: 44.6495, longitude: -63.5800, parking_type: "paid",       street_name: "Hollis St",        from_street: null,           to_street: null,        time_limit_minutes: null, cost_per_hour: 2.00, notes: null, schedule: { rules: HALIFAX_DEFAULT_PAID_RULES } },
   { id: "s9", latitude: 44.6520, longitude: -63.5760, parking_type: "free",       street_name: "University Ave",   from_street: null,           to_street: null,        time_limit_minutes: 90,   cost_per_hour: null, notes: null, schedule: null },
 ];
 
@@ -67,17 +68,21 @@ const SAMPLE_SPOTS: Omit<Spot, "current_status" | "current_color" | "current_lab
 
 function computeSpots(raw: typeof SAMPLE_SPOTS, now: Date): Spot[] {
   return raw.map((s) => {
-    const rules = s.schedule?.rules ?? [];
-    const ev = evaluateSpot(rules, now);
-    // Fall back to static parking_type color if no rules yet
-    const color = rules.length > 0 ? ev.color : (STATUS_COLOR[s.parking_type] ?? STATUS_COLOR.unknown);
-    const label = rules.length > 0 ? ev.label : (s.parking_type.charAt(0).toUpperCase() + s.parking_type.slice(1) + " parking");
-    return {
-      ...s,
-      current_status: rules.length > 0 ? ev.status : s.parking_type,
-      current_color:  color,
-      current_label:  label,
-    };
+    const explicitRules = s.schedule?.rules ?? [];
+    // On-street paid spots with no explicit schedule get the HRM default:
+    // paid Mon–Fri 8AM–6PM, free all other times.
+    const rules = explicitRules.length > 0
+      ? explicitRules
+      : s.parking_type === "paid" ? HALIFAX_DEFAULT_PAID_RULES : [];
+
+    if (rules.length > 0) {
+      const ev = evaluateSpot(rules, now);
+      return { ...s, current_status: ev.status, current_color: ev.color, current_label: ev.label };
+    }
+    // No rules at all — fall back to static parking_type
+    const color = STATUS_COLOR[s.parking_type] ?? STATUS_COLOR.unknown;
+    const label = s.parking_type.charAt(0).toUpperCase() + s.parking_type.slice(1) + " parking";
+    return { ...s, current_status: s.parking_type, current_color: color, current_label: label };
   });
 }
 
@@ -330,7 +335,11 @@ export default function ParkingMap() {
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
-  const rules: ParkingRule[] = selected?.schedule?.rules ?? [];
+  const explicitRules: ParkingRule[] = selected?.schedule?.rules ?? [];
+  const usingHrmDefault = explicitRules.length === 0 && selected?.parking_type === "paid";
+  const rules: ParkingRule[] = explicitRules.length > 0
+    ? explicitRules
+    : usingHrmDefault ? HALIFAX_DEFAULT_PAID_RULES : [];
   const now = new Date();
   const mapsUrl = selected
     ? `https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}`
@@ -526,6 +535,13 @@ export default function ParkingMap() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* HRM default note */}
+            {usingHrmDefault && (
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3 text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">On-street parking (HRM default):</span> Free after 6PM on weekdays, all day on weekends, and most holidays. Check signage for special events or winter overnight bans.
               </div>
             )}
 
