@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadSignSubmission } from "@/lib/submissions";
-import type { ExtractedParkingData } from "@/app/api/analyse-sign/route";
+import { RULE_TYPE_COLOR, RULE_TYPE_LABEL, formatTimeWindow, formatDays } from "@/lib/parking-rules";
+import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,16 +11,16 @@ type Status =
   | "idle"
   | "camera"
   | "locating"
-  | "ready"       // photo + location captured, awaiting user action
-  | "analysing"   // calling OCR API
-  | "analysed"    // extracted data ready for review
+  | "ready"
+  | "analysing"
+  | "analysed"
   | "submitting"
   | "success";
 
 interface Photo {
   blob: Blob;
   previewUrl: string;
-  base64: string;  // needed for OCR
+  base64: string;
 }
 
 interface Location {
@@ -68,7 +69,7 @@ export default function SignCapture() {
     }
   }, []);
 
-  // ── Step 2: capture photo + get location ─────────────────────────────────
+  // ── Step 2: capture photo + get location ──────────────────────────────────
 
   const captureAndLocate = useCallback(async () => {
     const video = videoRef.current;
@@ -80,13 +81,10 @@ export default function SignCapture() {
     canvas.getContext("2d")!.drawImage(video, 0, 0);
     stopStream();
 
-    const blob = await new Promise<Blob | null>((res) =>
-      canvas.toBlob(res, "image/jpeg", 0.85),
-    );
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
     if (!blob) { setError("Failed to capture photo. Please try again."); setStatus("idle"); return; }
 
-    // base64 for OCR — strip the data URL prefix
-    const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+    const base64     = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
     const previewUrl = URL.createObjectURL(blob);
 
     setPhoto({ blob, previewUrl, base64 });
@@ -115,7 +113,7 @@ export default function SignCapture() {
     }
   }, []);
 
-  // ── Step 3 (optional): analyse sign with OCR ────────────────────────────
+  // ── Step 3 (optional): analyse sign with OCR ──────────────────────────────
 
   const analyseSign = useCallback(async () => {
     if (!photo) return;
@@ -143,18 +141,15 @@ export default function SignCapture() {
     }
   }, [photo]);
 
-  // ── Step 4: retake ───────────────────────────────────────────────────────
+  // ── Step 4: retake ────────────────────────────────────────────────────────
 
   const retake = useCallback(() => {
     if (photo) URL.revokeObjectURL(photo.previewUrl);
-    setPhoto(null);
-    setLocation(null);
-    setExtracted(null);
-    setError(null);
+    setPhoto(null); setLocation(null); setExtracted(null); setError(null);
     openCamera();
   }, [photo, openCamera]);
 
-  // ── Step 5: submit ───────────────────────────────────────────────────────
+  // ── Step 5: submit ────────────────────────────────────────────────────────
 
   const submit = useCallback(async () => {
     if (!photo || !location) return;
@@ -163,13 +158,10 @@ export default function SignCapture() {
 
     try {
       await uploadSignSubmission({
-        imageBlob: photo.blob,
-        latitude:  location.lat,
-        longitude: location.lng,
-        deviceMetadata: {
-          userAgent:  navigator.userAgent,
-          capturedAt: new Date().toISOString(),
-        },
+        imageBlob:  photo.blob,
+        latitude:   location.lat,
+        longitude:  location.lng,
+        deviceMetadata: { userAgent: navigator.userAgent, capturedAt: new Date().toISOString() },
         extractedData: extracted ?? undefined,
       });
       URL.revokeObjectURL(photo.previewUrl);
@@ -181,15 +173,14 @@ export default function SignCapture() {
     }
   }, [photo, location, extracted]);
 
-  // ── Reset ────────────────────────────────────────────────────────────────
+  // ── Reset ─────────────────────────────────────────────────────────────────
 
   const reset = useCallback(() => {
     if (photo) URL.revokeObjectURL(photo.previewUrl);
-    setPhoto(null); setLocation(null); setExtracted(null);
-    setError(null); setStatus("idle");
+    setPhoto(null); setLocation(null); setExtracted(null); setError(null); setStatus("idle");
   }, [photo]);
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   if (status === "success") {
     return (
@@ -199,34 +190,39 @@ export default function SignCapture() {
         <p className="text-sm leading-relaxed text-gray-600">
           Thanks! Your photo is under review and will appear on the map once approved.
         </p>
-        <button onClick={reset} className="mt-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button
+          onClick={reset}
+          className="mt-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
           Submit another
         </button>
       </div>
     );
   }
 
-  const showPreview = photo && ["locating","ready","analysing","analysed","submitting"].includes(status);
+  const showPreview = photo && ["locating", "ready", "analysing", "analysed", "submitting"].includes(status);
 
   return (
     <div className="flex flex-col gap-5">
 
-      {/* ── Viewport ──────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-950" style={{ aspectRatio: "4/3" }}>
-
-        {/* Live camera */}
+      {/* ── Viewport ──────────────────────────────────────────────────────── */}
+      <div
+        className="relative overflow-hidden rounded-2xl border border-gray-200 bg-gray-950"
+        style={{ aspectRatio: "4/3" }}
+      >
         <video
-          ref={videoRef} autoPlay playsInline muted
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
           className={`h-full w-full object-cover ${status === "camera" ? "" : "hidden"}`}
         />
 
-        {/* Photo preview */}
         {showPreview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photo.previewUrl} alt="Captured sign" className="h-full w-full object-cover" />
         )}
 
-        {/* Idle placeholder */}
         {status === "idle" && (
           <div className="flex h-full items-center justify-center text-gray-500">
             <div className="text-center">
@@ -236,32 +232,80 @@ export default function SignCapture() {
           </div>
         )}
 
-        {/* Overlays */}
-        {status === "locating" && <Overlay label="Getting your location…" />}
+        {status === "locating"  && <Overlay label="Getting your location…" />}
         {status === "analysing" && <Overlay label="Reading the sign…" />}
 
-        {/* Extracted data overlay on top of the photo */}
-        {status === "analysed" && extracted && (
-          <div className="absolute inset-x-0 bottom-0 bg-black/70 px-4 py-3 text-white">
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300 mb-1">Extracted info</p>
-            <ExtractedBadges extracted={extracted} />
+        {status === "analysed" && extracted && extracted.rules.length > 0 && (
+          <div className="absolute inset-x-0 bottom-0 bg-black/75 px-4 py-3">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-300">
+              {extracted.rules.length} rule{extracted.rules.length !== 1 ? "s" : ""} detected
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {extracted.rules.map((r, i) => (
+                <span
+                  key={i}
+                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                  style={{ background: RULE_TYPE_COLOR[r.rule_type] }}
+                >
+                  {RULE_TYPE_LABEL[r.rule_type]}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* ── Error ─────────────────────────────────────────────────────── */}
+      {/* ── Error ─────────────────────────────────────────────────────────── */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
       )}
 
-      {/* ── Location confirmation ──────────────────────────────────────── */}
+      {/* ── Location confirmation ──────────────────────────────────────────── */}
       {(status === "ready" || status === "analysed") && location && (
         <p className="text-center text-xs text-green-700">
           Location captured — {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
         </p>
       )}
 
-      {/* ── Raw OCR text (collapsible) ─────────────────────────────────── */}
+      {/* ── Extracted rules detail ─────────────────────────────────────────── */}
+      {status === "analysed" && extracted && extracted.rules.length > 0 && (
+        <div className="space-y-2">
+          {extracted.rules.map((rule: ParkingRule, i: number) => (
+            <div
+              key={i}
+              className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5"
+            >
+              <span
+                className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: RULE_TYPE_COLOR[rule.rule_type] }}
+              />
+              <div>
+                <p className="text-sm font-semibold text-gray-800">
+                  {RULE_TYPE_LABEL[rule.rule_type]}
+                  {rule.tow_away && " — Tow away zone"}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {[
+                    rule.time_window ? formatTimeWindow(rule.time_window) : "24/7",
+                    rule.days !== null ? formatDays(rule.days) : "Every day",
+                    rule.time_limit_minutes
+                      ? `${Math.floor(rule.time_limit_minutes / 60)}h${rule.time_limit_minutes % 60 > 0 ? ` ${rule.time_limit_minutes % 60}m` : ""} max`
+                      : null,
+                    rule.cost_per_hour != null ? `$${rule.cost_per_hour.toFixed(2)}/hr` : null,
+                    rule.permit_zone ? `Zone ${rule.permit_zone}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Raw OCR text ──────────────────────────────────────────────────── */}
       {status === "analysed" && extracted?.raw_text && (
         <details className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-500">
           <summary className="cursor-pointer font-medium text-gray-700">Raw sign text</summary>
@@ -269,28 +313,43 @@ export default function SignCapture() {
         </details>
       )}
 
-      {/* ── Action buttons ─────────────────────────────────────────────── */}
+      {/* ── Action buttons ─────────────────────────────────────────────────── */}
       {status === "idle" && (
-        <button onClick={openCamera} className="w-full rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700">
+        <button
+          onClick={openCamera}
+          className="w-full rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+        >
           Open Camera
         </button>
       )}
 
       {status === "camera" && (
-        <button onClick={captureAndLocate} className="w-full rounded-full bg-green-600 py-3 text-sm font-semibold text-white hover:bg-green-700">
+        <button
+          onClick={captureAndLocate}
+          className="w-full rounded-full bg-green-600 py-3 text-sm font-semibold text-white hover:bg-green-700"
+        >
           Capture Sign
         </button>
       )}
 
       {status === "ready" && (
         <div className="flex gap-3">
-          <button onClick={retake} className="flex-1 rounded-full border border-gray-300 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          <button
+            onClick={retake}
+            className="flex-1 rounded-full border border-gray-300 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
             Retake
           </button>
-          <button onClick={analyseSign} className="flex-1 rounded-full bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-700">
+          <button
+            onClick={analyseSign}
+            className="flex-1 rounded-full bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-700"
+          >
             Analyse Sign
           </button>
-          <button onClick={submit} className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700">
+          <button
+            onClick={submit}
+            className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
             Submit
           </button>
         </div>
@@ -298,10 +357,16 @@ export default function SignCapture() {
 
       {status === "analysed" && (
         <div className="flex gap-3">
-          <button onClick={retake} className="flex-1 rounded-full border border-gray-300 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+          <button
+            onClick={retake}
+            className="flex-1 rounded-full border border-gray-300 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
             Retake
           </button>
-          <button onClick={submit} className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700">
+          <button
+            onClick={submit}
+            className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
             Confirm & Submit
           </button>
         </div>
@@ -321,36 +386,9 @@ export default function SignCapture() {
 function Overlay({ label }: { label: string }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-      <div className="rounded-xl bg-white px-5 py-3 text-sm font-medium text-gray-800 shadow-lg">{label}</div>
-    </div>
-  );
-}
-
-function ExtractedBadges({ extracted }: { extracted: ExtractedParkingData }) {
-  const TYPE_LABEL: Record<string, string> = {
-    free: "Free", paid: "Paid", permit: "Permit only",
-    accessible: "Accessible", unknown: "Unknown",
-  };
-
-  const badges: string[] = [TYPE_LABEL[extracted.parking_type] ?? extracted.parking_type];
-
-  if (extracted.time_limit_minutes) {
-    const h = Math.floor(extracted.time_limit_minutes / 60);
-    const m = extracted.time_limit_minutes % 60;
-    badges.push(h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""} limit` : `${m}m limit`);
-  }
-  if (extracted.cost_per_hour != null && extracted.cost_per_hour > 0) {
-    badges.push(`$${extracted.cost_per_hour.toFixed(2)}/hr`);
-  }
-  if (extracted.schedule) badges.push(extracted.schedule);
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {badges.map((b) => (
-        <span key={b} className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium">
-          {b}
-        </span>
-      ))}
+      <div className="rounded-xl bg-white px-5 py-3 text-sm font-medium text-gray-800 shadow-lg">
+        {label}
+      </div>
     </div>
   );
 }
