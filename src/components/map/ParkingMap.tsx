@@ -330,7 +330,7 @@ export default function ParkingMap() {
     const map = mapRef.current;
     if (!map) return;
     searchMarkerRef.current?.remove();
-    map.flyTo({ center: r.center, zoom: 15.5, duration: 900 });
+    map.flyTo({ center: r.center, zoom: 17, duration: 900 });
     searchMarkerRef.current = new mapboxgl.Marker({ color: "#4f46e5" })
       .setLngLat(r.center)
       .addTo(map);
