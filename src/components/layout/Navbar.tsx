@@ -1,6 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useState, useEffect } from "react";
 
 export default function Navbar() {
+  const [adminUser, setAdminUser] = useState("");
+
+  useEffect(() => {
+    const match = document.cookie.match(/admin_user=([^;]+)/);
+    if (match) setAdminUser(match[1]);
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex h-[60px] max-w-5xl items-center justify-between px-4">
@@ -10,7 +20,7 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-6 text-sm font-medium text-gray-600 sm:flex">
-          <a href="#how-it-works" className="transition-colors hover:text-indigo-600">How it works</a>
+          <a href="/#how-it-works" className="transition-colors hover:text-indigo-600">How it works</a>
           <Link
             href="/admin"
             className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"
@@ -19,13 +29,22 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        {/* Submit CTA — always visible */}
-        <Link
-          href="/submit"
-          className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
-        >
-          Submit a sign
-        </Link>
+        <div className="flex items-center gap-3">
+          {adminUser && (
+            <span className="hidden items-center gap-1.5 sm:flex">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs font-medium text-gray-500 capitalize">
+                Admin · {adminUser}
+              </span>
+            </span>
+          )}
+          <Link
+            href="/submit"
+            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+          >
+            Submit a sign
+          </Link>
+        </div>
       </div>
     </header>
   );
