@@ -8,7 +8,6 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
 import {
   evaluateSpot,
-  ruleLabel,
   formatDays,
   formatTimeWindow,
   STATUS_COLOR,
@@ -159,11 +158,11 @@ export default function ParkingMap() {
       source: "spots",
       filter: ["has", "point_count"],
       paint: {
-        "circle-color": "#4f46e5",
+        "circle-color": "#9b87b8",
         "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 28],
-        "circle-opacity": 0.85,
+        "circle-opacity": 0.65,
         "circle-stroke-width": 2,
-        "circle-stroke-color": "#fff",
+        "circle-stroke-color": "#000",
       },
     });
 
@@ -177,7 +176,7 @@ export default function ParkingMap() {
         "text-size": 12,
         "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
       },
-      paint: { "text-color": "#fff" },
+      paint: { "text-color": "#fff", "text-halo-color": "#000", "text-halo-width": 1 },
     });
 
     // Color driven by computed current_color stored in GeoJSON properties
@@ -331,7 +330,7 @@ export default function ParkingMap() {
     if (!map) return;
     searchMarkerRef.current?.remove();
     map.flyTo({ center: r.center, zoom: 17, duration: 900 });
-    searchMarkerRef.current = new mapboxgl.Marker({ color: "#4f46e5" })
+    searchMarkerRef.current = new mapboxgl.Marker({ color: "#1e1b4b" })
       .setLngLat(r.center)
       .addTo(map);
   }, []);
