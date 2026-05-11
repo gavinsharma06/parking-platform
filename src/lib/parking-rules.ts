@@ -52,10 +52,10 @@ export type SpotStatus = {
 };
 
 export const STATUS_COLOR: Record<string, string> = {
-  free:        "#16a34a",
-  paid:        "#2563eb",
+  free:        "#15803d",
+  paid:        "#ea580c",
   permit:      "#d97706",
-  accessible:  "#0ea5e9",
+  accessible:  "#7c3aed",
   no_parking:  "#dc2626",
   no_stopping: "#dc2626",
   unknown:     "#6b7280",
@@ -188,13 +188,13 @@ export function ruleLabel(rule: ParkingRule): string {
 }
 
 export const RULE_TYPE_COLOR: Record<RuleType, string> = {
-  paid:           "#2563eb",
-  free:           "#16a34a",
+  paid:           "#ea580c",
+  free:           "#15803d",
   permit_only:    "#d97706",
-  accessible:     "#0ea5e9",
+  accessible:     "#7c3aed",
   no_parking:     "#dc2626",
   no_stopping:    "#dc2626",
-  street_cleaning:"#7c3aed",
+  street_cleaning:"#0891b2",
   tow_away:       "#dc2626",
 };
 
