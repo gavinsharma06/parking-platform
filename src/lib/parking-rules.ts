@@ -24,6 +24,7 @@ export type ParkingRule = {
   cost_per_hour: number | null;
   permit_zone: string | null;
   tow_away: boolean;
+  direction: "left" | "right" | "both" | null; // arrow direction on the sign
   raw_text: string;
 };
 
@@ -174,6 +175,8 @@ export function ruleLabel(rule: ParkingRule): string {
   if (rule.tow_away && rule.rule_type !== "tow_away" && rule.rule_type !== "no_stopping") {
     parts.push("(tow-away)");
   }
+  if (rule.direction === "left")  parts.push("← Left");
+  if (rule.direction === "right") parts.push("→ Right");
   if (rule.time_window)         parts.push(formatTimeWindow(rule.time_window));
   if (rule.days)                parts.push(formatDays(rule.days));
   if (rule.time_limit_minutes) {
@@ -224,6 +227,7 @@ export const HALIFAX_DEFAULT_PAID_RULES: ParkingRule[] = [
     cost_per_hour:      null,
     permit_zone:        null,
     tow_away:           false,
+    direction:          "both",
     raw_text:           "Payment required 8AM–6PM Mon–Fri (HRM on-street default)",
   },
 ];
