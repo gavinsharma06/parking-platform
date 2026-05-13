@@ -19,6 +19,7 @@ type ParkingRule = {
   cost_per_hour: number | null;
   permit_zone: string | null;
   tow_away: boolean;
+  direction: "left" | "right" | "both" | null; // arrow direction printed on the sign panel
   raw_text: string;               // verbatim text from that sign panel
 };
 
@@ -41,6 +42,10 @@ Rules:
 - cost_per_hour: from the first paid rule
 - schedule: start–end from the first rule with a time window, e.g. "08:00–18:00", or null
 - confidence: 0.9+ if times/days clearly visible, 0.5 if partial, 0.1 if unreadable
+- direction: look for horizontal arrow symbols (← or →) printed on the sign panel.
+  Set "left" if only a left arrow is visible, "right" if only a right arrow, "both" if
+  arrows point in both directions or there are no arrows (rule applies both ways), null
+  if you cannot determine direction at all.
 
 Respond with raw JSON only, no markdown, no code fences.`;
 

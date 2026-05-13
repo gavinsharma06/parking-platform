@@ -527,6 +527,8 @@ export default function ParkingMap() {
                           </div>
                           <p className="mt-0.5 text-xs text-gray-500">
                             {[
+                              rule.direction === "left"  ? "← Left"  : null,
+                              rule.direction === "right" ? "→ Right" : null,
                               rule.time_window ? formatTimeWindow(rule.time_window) : "24/7",
                               formatDays(rule.days),
                               rule.time_limit_minutes != null

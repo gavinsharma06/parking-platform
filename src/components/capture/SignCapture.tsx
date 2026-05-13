@@ -219,6 +219,8 @@ export default function SignCapture() {
                   </p>
                   <p className="text-xs text-gray-500">
                     {[
+                      rule.direction === "left"  ? "← Left"  : null,
+                      rule.direction === "right" ? "→ Right" : null,
                       rule.time_window ? formatTimeWindow(rule.time_window) : "24/7",
                       rule.days !== null ? formatDays(rule.days) : "Every day",
                       rule.time_limit_minutes
