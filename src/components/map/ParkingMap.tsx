@@ -102,6 +102,61 @@ function formatTimeLimit(minutes: number): string {
   return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""} limit` : `${m}m limit`;
 }
 
+// Draws a teardrop pin onto a canvas and returns the raw pixel data Mapbox needs.
+// The pin tip sits at the bottom-centre so icon-anchor:"bottom" places it exactly on the coord.
+function drawPin(color: string): { width: number; height: number; data: Uint8ClampedArray } {
+  const W = 22, H = 30;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  const cx   = W / 2;
+  const r    = cx - 1.5;      // circle radius
+  const cy   = r + 1.5;       // circle centre y
+  const tipY = H - 1.5;       // tip y
+  const d    = tipY - cy;     // centre-to-tip distance
+
+  // Find the two points on the circle where straight sides are tangent to the tip
+  const alpha      = Math.asin(r / d);
+  const lx         = cx - r * Math.sin(alpha);
+  const ly         = cy + r * Math.cos(alpha);
+  const rx         = cx + r * Math.sin(alpha);
+  const leftAngle  = Math.atan2(ly - cy, lx - cx);
+  const rightAngle = Math.atan2(ly - cy, rx - cx);
+
+  // Shadow
+  ctx.shadowColor   = "rgba(0,0,0,0.28)";
+  ctx.shadowBlur    = 3;
+  ctx.shadowOffsetY = 1.5;
+
+  // Fill
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, leftAngle, rightAngle, false); // clockwise through the top
+  ctx.lineTo(cx, tipY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Border
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, leftAngle, rightAngle, false);
+  ctx.lineTo(cx, tipY);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Inner highlight dot
+  ctx.fillStyle = "rgba(255,255,255,0.32)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.38, 0, Math.PI * 2);
+  ctx.fill();
+
+  return { width: W, height: H, data: ctx.getImageData(0, 0, W, H).data };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ParkingMap() {
@@ -179,18 +234,37 @@ export default function ParkingMap() {
       paint: { "text-color": "#fff", "text-halo-color": "#000", "text-halo-width": 1 },
     });
 
-    // Color driven by computed current_color stored in GeoJSON properties
+    // Register one teardrop-pin image per status colour
+    const PIN_STATUSES = ["free", "paid", "permit", "accessible", "no_parking", "no_stopping", "unknown"] as const;
+    PIN_STATUSES.forEach((s) => {
+      if (!map.hasImage(`pin-${s}`)) {
+        map.addImage(`pin-${s}`, drawPin(STATUS_COLOR[s] ?? STATUS_COLOR.unknown));
+      }
+    });
+
+    // Individual spots — symbol layer keeps everything GPU-rendered (no DOM lag)
     map.addLayer({
       id: "spots",
-      type: "circle",
+      type: "symbol",
       source: "spots",
       filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 7, 17, 10],
-        "circle-color": ["get", "current_color"],
-        "circle-stroke-width": 1.5,
-        "circle-stroke-color": "#fff",
-        "circle-opacity": 0.95,
+      layout: {
+        "icon-image": [
+          "match", ["get", "current_status"],
+          "free",        "pin-free",
+          "paid",        "pin-paid",
+          "permit",      "pin-permit",
+          "accessible",  "pin-accessible",
+          "no_parking",  "pin-no_parking",
+          "no_stopping", "pin-no_stopping",
+          /* default */  "pin-unknown",
+        ],
+        "icon-size":               ["interpolate", ["linear"], ["zoom"], 10, 0.55, 14, 0.85, 17, 1.1],
+        "icon-anchor":             "bottom",
+        "icon-allow-overlap":      true,
+        "icon-ignore-placement":   true,
+        "icon-pitch-alignment":    "viewport",
+        "icon-rotation-alignment": "viewport",
       },
     });
   }
