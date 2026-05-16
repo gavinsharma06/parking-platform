@@ -64,9 +64,13 @@ function generateAnswer(rules: ParkingRule[], now: Date): { answer: string; can_
   const day = now.getDay();
   const minutesNow = now.getHours() * 60 + now.getMinutes();
 
+  // Find the next upcoming restriction — include permit_only so we can warn
+  // "free now, permit zone starts at 8AM" even though permit_only is not
+  // is_prohibited (it's a restriction that affects whether you can stay).
   let nextRestrictionAt: string | null = null;
   for (const rule of rules) {
-    if (!rule.is_prohibited || !rule.time_window) continue;
+    const isRestriction = rule.is_prohibited || rule.rule_type === "permit_only";
+    if (!isRestriction || !rule.time_window) continue;
     if (rule.days !== null && !rule.days.includes(day)) continue;
     const start = toMinutes(rule.time_window.start);
     if (start > minutesNow) {

@@ -1,53 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type { ExtractedParkingData } from "@/lib/parking-rules";
 import { deriveParkingType } from "@/lib/parking-rules";
 import { getRateLimitMinute, getRateLimitDay } from "@/lib/ratelimit";
-
-const PROMPT = `You are a parking sign parser. Analyze this parking sign image and extract all parking rules.
-
-Return a JSON object matching this TypeScript type:
-
-type RuleType = "paid" | "free" | "permit_only" | "accessible" | "no_parking" | "no_stopping" | "street_cleaning" | "tow_away";
-
-type ParkingRule = {
-  rule_type: RuleType;
-  is_prohibited: boolean;
-  days: number[] | null;          // null = all days; 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
-  time_window: { start: string; end: string } | null;  // HH:MM 24h format, null = 24/7
-  time_limit_minutes: number | null;
-  cost_per_hour: number | null;
-  permit_zone: string | null;
-  tow_away: boolean;
-  direction: "left" | "right" | "both" | null; // arrow direction printed on the sign panel
-  raw_text: string;               // verbatim text from that sign panel
-};
-
-type ExtractedParkingData = {
-  rules: ParkingRule[];
-  raw_text: string;               // full raw OCR text of the entire image
-  confidence: number;             // 0.0–1.0, your confidence in the extraction
-  parking_type: "free" | "paid" | "permit" | "accessible" | "unknown";
-  time_limit_minutes: number | null;
-  cost_per_hour: number | null;
-  schedule: string | null;        // e.g. "08:00–18:00" from the first rule, or null
-};
-
-Rules:
-- Each distinct sign panel = one ParkingRule entry
-- is_prohibited: true for no_parking, no_stopping, street_cleaning, tow_away; false for paid, free, permit_only, accessible
-- If you see a wheelchair/accessibility symbol, set rule_type to "accessible"
-- parking_type: derive from the highest-priority rule (accessible > permit > paid > free > unknown)
-- time_limit_minutes: from the first rule that has a limit (e.g. "2 HR" = 120)
-- cost_per_hour: from the first paid rule
-- schedule: start–end from the first rule with a time window, e.g. "08:00–18:00", or null
-- confidence: 0.9+ if times/days clearly visible, 0.5 if partial, 0.1 if unreadable
-- direction: look for horizontal arrow symbols (← or →) printed on the sign panel.
-  Set "left" if only a left arrow is visible, "right" if only a right arrow, "both" if
-  arrows point in both directions or there are no arrows (rule applies both ways), null
-  if you cannot determine direction at all.
-
-Respond with raw JSON only, no markdown, no code fences.`;
+import { fetchFewShotExamples, buildPrompt } from "@/lib/training-examples";
 
 // ─── Helper: get best-effort client IP ───────────────────────────────────────
 
@@ -109,6 +65,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Kick off few-shot fetch before awaiting the request body ───────────────
+  // Supabase roundtrip (~50–150 ms) runs concurrently with JSON.parse so it
+  // adds no wall-clock latency in the common case.
+  const examplesPromise = fetchFewShotExamples(5);
+
   // ── Parse request body ─────────────────────────────────────────────────────
   let imageBase64: string;
   try {
@@ -122,11 +83,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Call Gemini Vision ─────────────────────────────────────────────────────
-  const ai = new GoogleGenAI({ apiKey });
-
   // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+
+  // ── Build prompt with few-shot examples ────────────────────────────────────
+  // Await here — almost certainly already resolved given body parsing above.
+  // fetchFewShotExamples never throws, so no try/catch needed.
+  const examples = await examplesPromise;
+  const prompt = buildPrompt(examples);
+
+  // ── Call Gemini Vision ─────────────────────────────────────────────────────
+  const ai = new GoogleGenAI({ apiKey });
 
   let rawJson: string;
   try {
@@ -134,8 +101,11 @@ export async function POST(req: NextRequest) {
       model: "gemini-3-flash-preview",
       contents: [
         { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-        { text: PROMPT },
+        { text: prompt },
       ],
+      // Low thinking level — structured extraction doesn't need deep reasoning,
+      // and this halves time-to-first-token vs the "high" default.
+      config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
     });
     rawJson = (result.text ?? "").trim();
   } catch (err) {
