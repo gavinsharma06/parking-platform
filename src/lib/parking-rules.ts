@@ -24,6 +24,7 @@ export type ParkingRule = {
   cost_per_hour: number | null;
   permit_zone: string | null;
   tow_away: boolean;
+  direction: "left" | "right" | "both" | null; // arrow direction on the sign
   raw_text: string;
 };
 
@@ -111,7 +112,15 @@ export function evaluateSpot(rules: ParkingRule[], now: Date = new Date()): Spot
   if (prohibited.some((r) => r.rule_type === "no_stopping" || r.tow_away)) {
     return { status: "no_stopping", activeRules, label: STATUS_LABEL.no_stopping, color: STATUS_COLOR.no_stopping };
   }
+  // Accessible-only spots: Gemini extracts a no_parking rule (general public)
+  // alongside an accessible rule (permit holders). Treat the spot as accessible
+  // rather than a plain no_parking so the answer and map colour are correct.
   if (prohibited.length > 0) {
+    const hasAccessible = activeRules.some((r) => r.rule_type === "accessible" && !r.is_prohibited);
+    const onlyNoParking = prohibited.every((r) => r.rule_type === "no_parking" || r.rule_type === "street_cleaning");
+    if (hasAccessible && onlyNoParking) {
+      return { status: "accessible", activeRules, label: STATUS_LABEL.accessible, color: STATUS_COLOR.accessible };
+    }
     return { status: "no_parking", activeRules, label: STATUS_LABEL.no_parking, color: STATUS_COLOR.no_parking };
   }
 
@@ -174,6 +183,8 @@ export function ruleLabel(rule: ParkingRule): string {
   if (rule.tow_away && rule.rule_type !== "tow_away" && rule.rule_type !== "no_stopping") {
     parts.push("(tow-away)");
   }
+  if (rule.direction === "left")  parts.push("← Left");
+  if (rule.direction === "right") parts.push("→ Right");
   if (rule.time_window)         parts.push(formatTimeWindow(rule.time_window));
   if (rule.days)                parts.push(formatDays(rule.days));
   if (rule.time_limit_minutes) {
@@ -224,6 +235,7 @@ export const HALIFAX_DEFAULT_PAID_RULES: ParkingRule[] = [
     cost_per_hour:      null,
     permit_zone:        null,
     tow_away:           false,
+    direction:          "both",
     raw_text:           "Payment required 8AM–6PM Mon–Fri (HRM on-street default)",
   },
 ];
