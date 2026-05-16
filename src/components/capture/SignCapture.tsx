@@ -13,7 +13,6 @@ type Status =
   | "locating"
   | "ready"
   | "analysing"
-  | "analysed"
   | "submitting"
   | "success";
 
@@ -134,23 +133,7 @@ export default function SignCapture() {
     }
   }, []);
 
-  // ── Step 3 (optional): analyse sign with OCR ──────────────────────────────
-
-  const analyseSign = useCallback(async () => {
-    if (!photo) return;
-    setError(null);
-    setStatus("analysing");
-    try {
-      const data = await fetchAnalysis(photo.base64);
-      setExtracted(data);
-      setStatus("analysed");
-    } catch (e) {
-      setStatus("ready");
-      setError(e instanceof Error ? e.message : "Analysis failed. You can still submit without it.");
-    }
-  }, [photo]);
-
-  // ── Step 4: retake ────────────────────────────────────────────────────────
+  // ── Step 3: retake ────────────────────────────────────────────────────────
 
   const retake = useCallback(() => {
     if (photo) URL.revokeObjectURL(photo.previewUrl);
@@ -158,23 +141,23 @@ export default function SignCapture() {
     openCamera();
   }, [photo, openCamera]);
 
-  // ── Step 5: submit (auto-analyses first if not done yet) ──────────────────
+  // ── Step 4: submit — analyses then uploads in one action ──────────────────
 
   const submit = useCallback(async () => {
     if (!photo || !location) return;
     setError(null);
 
-    let analysedData = extracted;
-    if (!analysedData) {
-      setStatus("analysing");
-      try {
-        analysedData = await fetchAnalysis(photo.base64);
-        setExtracted(analysedData);
-      } catch {
-        // Analysis failed — proceed with upload anyway, without OCR data
-      }
+    // Analyse first
+    setStatus("analysing");
+    let analysedData: ExtractedParkingData | null = null;
+    try {
+      analysedData = await fetchAnalysis(photo.base64);
+      setExtracted(analysedData);
+    } catch {
+      // Analysis failed — proceed without OCR data
     }
 
+    // Upload
     setStatus("submitting");
     try {
       await uploadSignSubmission({
@@ -185,13 +168,15 @@ export default function SignCapture() {
         extractedData: analysedData ?? undefined,
       });
       URL.revokeObjectURL(photo.previewUrl);
-      setPhoto(null); setLocation(null); setExtracted(null);
+      setPhoto(null);
+      setLocation(null);
+      // Keep `extracted` — success screen shows it
       setStatus("success");
     } catch {
-      setStatus(analysedData ? "analysed" : "ready");
+      setStatus("ready");
       setError("Upload failed. Check your connection and try again.");
     }
-  }, [photo, location, extracted]);
+  }, [photo, location]);
 
   // ── Reset ─────────────────────────────────────────────────────────────────
 
@@ -200,16 +185,59 @@ export default function SignCapture() {
     setPhoto(null); setLocation(null); setExtracted(null); setError(null); setStatus("idle");
   }, [photo]);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Success screen ───────────────────────────────────────────────────────
 
   if (status === "success") {
     return (
-      <div className="flex flex-col items-center gap-4 rounded-2xl border border-green-100 bg-green-50 p-10 text-center">
+      <div className="flex flex-col items-center gap-4 rounded-2xl border border-green-100 bg-green-50 p-8 text-center">
         <span className="text-4xl">✅</span>
-        <h2 className="text-lg font-bold text-gray-900">Submission received</h2>
-        <p className="text-sm leading-relaxed text-gray-600">
-          Thanks! Your photo is under review and will appear on the map once approved.
-        </p>
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Submission received</h2>
+          <p className="mt-1 text-sm leading-relaxed text-gray-600">
+            Thanks! Your photo is under review and will appear on the map once approved.
+          </p>
+        </div>
+
+        {extracted && extracted.rules.length > 0 && (
+          <div className="w-full space-y-2 text-left">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+              What we found
+            </p>
+            {extracted.rules.map((rule: ParkingRule, i: number) => (
+              <div
+                key={i}
+                className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2.5"
+              >
+                <span
+                  className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: RULE_TYPE_COLOR[rule.rule_type] }}
+                />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {RULE_TYPE_LABEL[rule.rule_type]}
+                    {rule.tow_away && " — Tow away zone"}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {[
+                      rule.direction === "left"  ? "← Left"  : null,
+                      rule.direction === "right" ? "→ Right" : null,
+                      rule.time_window ? formatTimeWindow(rule.time_window) : "24/7",
+                      rule.days !== null ? formatDays(rule.days) : "Every day",
+                      rule.time_limit_minutes
+                        ? `${Math.floor(rule.time_limit_minutes / 60)}h${rule.time_limit_minutes % 60 > 0 ? ` ${rule.time_limit_minutes % 60}m` : ""} max`
+                        : null,
+                      rule.cost_per_hour != null ? `$${rule.cost_per_hour.toFixed(2)}/hr` : null,
+                      rule.permit_zone ? `Zone ${rule.permit_zone}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={reset}
           className="mt-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
@@ -220,7 +248,7 @@ export default function SignCapture() {
     );
   }
 
-  const showPreview = photo && ["locating", "ready", "analysing", "analysed", "submitting"].includes(status);
+  const showPreview = photo && ["locating", "ready", "analysing", "submitting"].includes(status);
 
   return (
     <div className="flex flex-col gap-5">
@@ -252,27 +280,9 @@ export default function SignCapture() {
           </div>
         )}
 
-        {status === "locating"  && <Overlay label="Getting your location…" />}
-        {status === "analysing" && <Overlay label="Reading the sign…" />}
-
-        {status === "analysed" && extracted && extracted.rules.length > 0 && (
-          <div className="absolute inset-x-0 bottom-0 bg-black/75 px-4 py-3">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-300">
-              {extracted.rules.length} rule{extracted.rules.length !== 1 ? "s" : ""} detected
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {extracted.rules.map((r, i) => (
-                <span
-                  key={i}
-                  className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-                  style={{ background: RULE_TYPE_COLOR[r.rule_type] }}
-                >
-                  {RULE_TYPE_LABEL[r.rule_type]}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        {status === "locating"   && <Overlay label="Getting your location…" />}
+        {status === "analysing"  && <Overlay label="Reading the sign…" />}
+        {status === "submitting" && <Overlay label="Uploading…" />}
       </div>
 
       {/* ── Error ─────────────────────────────────────────────────────────── */}
@@ -283,54 +293,10 @@ export default function SignCapture() {
       )}
 
       {/* ── Location confirmation ──────────────────────────────────────────── */}
-      {(status === "ready" || status === "analysed") && location && (
+      {status === "ready" && location && (
         <p className="text-center text-xs text-green-700">
           Location captured — {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
         </p>
-      )}
-
-      {/* ── Extracted rules detail ─────────────────────────────────────────── */}
-      {status === "analysed" && extracted && extracted.rules.length > 0 && (
-        <div className="space-y-2">
-          {extracted.rules.map((rule: ParkingRule, i: number) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5"
-            >
-              <span
-                className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: RULE_TYPE_COLOR[rule.rule_type] }}
-              />
-              <div>
-                <p className="text-sm font-semibold text-gray-800">
-                  {RULE_TYPE_LABEL[rule.rule_type]}
-                  {rule.tow_away && " — Tow away zone"}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {[
-                    rule.time_window ? formatTimeWindow(rule.time_window) : "24/7",
-                    rule.days !== null ? formatDays(rule.days) : "Every day",
-                    rule.time_limit_minutes
-                      ? `${Math.floor(rule.time_limit_minutes / 60)}h${rule.time_limit_minutes % 60 > 0 ? ` ${rule.time_limit_minutes % 60}m` : ""} max`
-                      : null,
-                    rule.cost_per_hour != null ? `$${rule.cost_per_hour.toFixed(2)}/hr` : null,
-                    rule.permit_zone ? `Zone ${rule.permit_zone}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Raw OCR text ──────────────────────────────────────────────────── */}
-      {status === "analysed" && extracted?.raw_text && (
-        <details className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-500">
-          <summary className="cursor-pointer font-medium text-gray-700">Raw sign text</summary>
-          <p className="mt-2 whitespace-pre-wrap text-xs">{extracted.raw_text}</p>
-        </details>
       )}
 
       {/* ── Action buttons ─────────────────────────────────────────────────── */}
@@ -361,40 +327,17 @@ export default function SignCapture() {
             Retake
           </button>
           <button
-            onClick={analyseSign}
-            className="flex-1 rounded-full bg-violet-600 py-3 text-sm font-semibold text-white hover:bg-violet-700"
-          >
-            Analyse Sign
-          </button>
-          <button
             onClick={submit}
-            className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
+            className="flex-2 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
           >
             Submit
           </button>
         </div>
       )}
 
-      {status === "analysed" && (
-        <div className="flex gap-3">
-          <button
-            onClick={retake}
-            className="flex-1 rounded-full border border-gray-300 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Retake
-          </button>
-          <button
-            onClick={submit}
-            className="flex-1 rounded-full bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
-          >
-            Confirm & Submit
-          </button>
-        </div>
-      )}
-
       {(status === "locating" || status === "analysing" || status === "submitting") && (
         <button disabled className="w-full cursor-not-allowed rounded-full bg-indigo-400 py-3 text-sm font-semibold text-white">
-          {status === "locating" ? "Getting location…" : status === "analysing" ? "Analysing…" : "Uploading…"}
+          {status === "locating" ? "Getting location…" : status === "analysing" ? "Reading sign…" : "Uploading…"}
         </button>
       )}
     </div>

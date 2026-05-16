@@ -29,7 +29,7 @@ export default function Navbar() {
           </Link>
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {adminUser && (
             <span className="hidden items-center gap-1.5 sm:flex">
               <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -39,8 +39,14 @@ export default function Navbar() {
             </span>
           )}
           <Link
+            href="/can-i-park"
+            className="rounded-full bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700"
+          >
+            Can I Park Here?
+          </Link>
+          <Link
             href="/submit"
-            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+            className="hidden sm:block rounded-full border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50"
           >
             Submit a sign
           </Link>

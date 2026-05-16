@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import type { ExtractedParkingData } from "@/lib/parking-rules";
 import { deriveParkingType } from "@/lib/parking-rules";
+import { getRateLimitMinute, getRateLimitDay } from "@/lib/ratelimit";
 
 const PROMPT = `You are a parking sign parser. Analyze this parking sign image and extract all parking rules.
 
@@ -18,6 +19,7 @@ type ParkingRule = {
   cost_per_hour: number | null;
   permit_zone: string | null;
   tow_away: boolean;
+  direction: "left" | "right" | "both" | null; // arrow direction printed on the sign panel
   raw_text: string;               // verbatim text from that sign panel
 };
 
@@ -40,10 +42,65 @@ Rules:
 - cost_per_hour: from the first paid rule
 - schedule: start–end from the first rule with a time window, e.g. "08:00–18:00", or null
 - confidence: 0.9+ if times/days clearly visible, 0.5 if partial, 0.1 if unreadable
+- direction: look for horizontal arrow symbols (← or →) printed on the sign panel.
+  Set "left" if only a left arrow is visible, "right" if only a right arrow, "both" if
+  arrows point in both directions or there are no arrows (rule applies both ways), null
+  if you cannot determine direction at all.
 
 Respond with raw JSON only, no markdown, no code fences.`;
 
+// ─── Helper: get best-effort client IP ───────────────────────────────────────
+
+function getIP(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
+  // ── Rate limiting ──────────────────────────────────────────────────────────
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    const ip = getIP(req);
+
+    const [minResult, dayResult] = await Promise.all([
+      getRateLimitMinute().limit(ip),
+      getRateLimitDay().limit(ip),
+    ]);
+
+    if (!minResult.success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment before trying again." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After":           String(Math.ceil((minResult.reset - Date.now()) / 1000)),
+            "X-RateLimit-Limit":     "10",
+            "X-RateLimit-Remaining": String(minResult.remaining),
+          },
+        },
+      );
+    }
+
+    if (!dayResult.success) {
+      return NextResponse.json(
+        { error: "Daily limit reached. You can analyse up to 50 signs per day." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After":           String(Math.ceil((dayResult.reset - Date.now()) / 1000)),
+            "X-RateLimit-Limit":     "50",
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    }
+  }
+
+  // ── Gemini API key check ───────────────────────────────────────────────────
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -52,6 +109,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Parse request body ─────────────────────────────────────────────────────
   let imageBase64: string;
   try {
     const body = await req.json();
@@ -64,6 +122,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Call Gemini Vision ─────────────────────────────────────────────────────
   const ai = new GoogleGenAI({ apiKey });
 
   // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
@@ -84,6 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Gemini API error: ${msg}` }, { status: 502 });
   }
 
+  // ── Parse Gemini response ──────────────────────────────────────────────────
   let parsed: ExtractedParkingData;
   try {
     // Strip accidental markdown fences if model ignores instructions
