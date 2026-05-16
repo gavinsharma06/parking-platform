@@ -81,6 +81,26 @@ function generateAnswer(rules: ParkingRule[], now: Date): { answer: string; can_
       return { answer: "No — tow-away zone in effect. Do not stop here.", can_park: false };
 
     case "no_parking": {
+      // If ALL active prohibited rules are directional (left/right only, not both/null),
+      // the other side may be free — give a directional answer instead of a blanket "no".
+      const activeProhibited = status.activeRules.filter((r) => r.is_prohibited);
+      const allDirectional =
+        activeProhibited.length > 0 &&
+        activeProhibited.every((r) => r.direction === "left" || r.direction === "right");
+
+      if (allDirectional) {
+        const leftBlocked  = activeProhibited.some((r) => r.direction === "left");
+        const rightBlocked = activeProhibited.some((r) => r.direction === "right");
+        if (leftBlocked && !rightBlocked) {
+          const cleaningNote = nextRestrictionAt ? ` Street cleaning starts at ${formatTime(nextRestrictionAt)}.` : "";
+          return { answer: `No parking ← left (always). The right side is free to park right now.${cleaningNote}`, can_park: true };
+        }
+        if (rightBlocked && !leftBlocked) {
+          const cleaningNote = nextRestrictionAt ? ` Street cleaning starts at ${formatTime(nextRestrictionAt)}.` : "";
+          return { answer: `No parking → right (always). The left side is free to park right now.${cleaningNote}`, can_park: true };
+        }
+      }
+
       const active = status.activeRules.find((r) => r.is_prohibited && r.time_window);
       if (active?.time_window) {
         return {
@@ -153,7 +173,7 @@ export async function POST(req: NextRequest) {
   let rawJson: string;
   try {
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3-flash-preview",
       contents: [
         { inlineData: { mimeType: "image/jpeg", data: base64Data } },
         { text: PROMPT },

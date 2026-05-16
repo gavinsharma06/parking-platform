@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   let rawJson: string;
   try {
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3-flash-preview",
       contents: [
         { inlineData: { mimeType: "image/jpeg", data: base64Data } },
         { text: PROMPT },
