@@ -119,6 +119,14 @@ export async function PATCH(
 
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
+    // ── Write to training_examples (non-fatal) ────────────────────────────────
+    await supabase.from("training_examples").insert({
+      submission_id:           id,
+      image_path:              sub.image_path,
+      raw_text:                extracted?.raw_text ?? null,
+      approved_extracted_data: extracted ?? null,
+    });
+
     return NextResponse.json({
       ok: true,
       parking_spot_id: spotId,
