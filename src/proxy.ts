@@ -6,7 +6,7 @@ export const config = {
   matcher: ["/admin", "/admin/:path*", "/api/admin/:path*"],
 };
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
   if (pathname === "/admin/login" || pathname === "/api/admin/auth") return NextResponse.next();
 
