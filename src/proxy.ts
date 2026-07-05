@@ -9,7 +9,7 @@ const ADMINS: Record<string, string | undefined> = {
   ishant: process.env.ADMIN_ISHANT_PASSWORD,
 };
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   if (req.nextUrl.pathname === "/admin/login") return NextResponse.next();
 
   const cookie = req.cookies.get("admin_auth")?.value ?? "";
