@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "node --test src/lib/__tests__/admin-auth.test.ts",
     "start": "next start",
     "lint": "eslint"
   },

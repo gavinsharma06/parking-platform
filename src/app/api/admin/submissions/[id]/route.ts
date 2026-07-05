@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { deriveParkingType, haversineMetres } from "@/lib/parking-rules";
 import type { ParkingRule, SpotSchedule, ExtractedParkingData } from "@/lib/parking-rules";
@@ -11,6 +12,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const supabase = createServiceRoleClient();
   const body = await request.json();

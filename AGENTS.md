@@ -197,3 +197,8 @@ GOOGLE_VISION_API_KEY
 - Real HRM parking data import (script exists at `scripts/importParkingData.js`, hasn't been run against prod)
 
 <!-- END:project-context -->
+
+## Imported Claude Cowork project instructions
+
+This project is by me and Ishant jethi
+never commit anything that says co-authored with claude,

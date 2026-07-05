@@ -1,24 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { ADMIN_AUTH_COOKIE, verifyAdminSessionToken } from "@/lib/admin-auth";
+
 export const config = {
-  matcher: ["/admin", "/admin/:path*"],
+  matcher: ["/admin", "/admin/:path*", "/api/admin/:path*"],
 };
 
-const ADMINS: Record<string, string | undefined> = {
-  gavin:  process.env.ADMIN_GAVIN_PASSWORD,
-  ishant: process.env.ADMIN_ISHANT_PASSWORD,
-};
+export async function middleware(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
+  if (pathname === "/admin/login" || pathname === "/api/admin/auth") return NextResponse.next();
 
-export function middleware(req: NextRequest) {
-  if (req.nextUrl.pathname === "/admin/login") return NextResponse.next();
+  const token = req.cookies.get(ADMIN_AUTH_COOKIE)?.value;
+  if (await verifyAdminSessionToken(token)) return NextResponse.next();
 
-  const cookie = req.cookies.get("admin_auth")?.value ?? "";
-  const colonIdx = cookie.indexOf(":");
-  const username = cookie.slice(0, colonIdx);
-  const password = cookie.slice(colonIdx + 1);
-  const expected = ADMINS[username];
-
-  if (expected && password === expected) return NextResponse.next();
+  if (pathname.startsWith("/api/admin/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const loginUrl = req.nextUrl.clone();
   loginUrl.pathname = "/admin/login";
