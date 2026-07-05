@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 
 // GET /api/admin/spots — list all parking spots
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const supabase = createServiceRoleClient();
 
   const { data, error } = await supabase
@@ -16,6 +20,9 @@ export async function GET() {
 
 // POST /api/admin/spots — manually create a spot
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const supabase = createServiceRoleClient();
   const body = await req.json();
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 
 // PATCH /api/admin/spots/[id] — edit a spot's attributes
@@ -6,6 +7,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const supabase = createServiceRoleClient();
   const body = await req.json();
@@ -50,9 +54,12 @@ export async function PATCH(
 // because SET NULL only clears the FK — it doesn't touch the status field.
 // Sign images in storage are kept for audit trail.
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const supabase = createServiceRoleClient();
 

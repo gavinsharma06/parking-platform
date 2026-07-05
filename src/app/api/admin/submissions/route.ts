@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   const supabase = createServiceRoleClient();
 
   const { data: submissions, error } = await supabase
