@@ -23,7 +23,7 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-const API_KEY = process.env.GOOGLE_VISION_API_KEY ?? process.env.NEXT_PUBLIC_VISION_API_KEY;
+const API_KEY = process.env.GOOGLE_VISION_API_KEY;
 if (!API_KEY) {
   console.error("❌  GOOGLE_VISION_API_KEY not set in .env");
   process.exit(1);
