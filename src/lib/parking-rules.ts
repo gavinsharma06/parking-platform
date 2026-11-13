@@ -74,6 +74,52 @@ export const STATUS_LABEL: Record<string, string> = {
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
+export const HALIFAX_TIME_ZONE = "America/Halifax";
+
+export type HalifaxTime = {
+  // 0=Sun 1=Mon … 6=Sat, matching ParkingRule.days
+  day: number;
+  // Minutes since midnight in Halifax local time
+  minutes: number;
+};
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+};
+
+const halifaxFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: HALIFAX_TIME_ZONE,
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * Returns the weekday and minutes since midnight in America/Halifax for the
+ * given instant, independent of the host's timezone (server or browser).
+ * Handles AST/ADT automatically via Intl.
+ */
+export function halifaxNow(date: Date = new Date()): HalifaxTime {
+  let weekday = "";
+  let hour = 0;
+  let minute = 0;
+  for (const part of halifaxFormatter.formatToParts(date)) {
+    if (part.type === "weekday") weekday = part.value;
+    else if (part.type === "hour") hour = Number(part.value);
+    else if (part.type === "minute") minute = Number(part.value);
+  }
+  // Some ICU builds still emit "24" at midnight; normalise to 0
+  if (hour === 24) hour = 0;
+  return { day: WEEKDAY_INDEX[weekday], minutes: hour * 60 + minute };
+}
+
 function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + (m ?? 0);
