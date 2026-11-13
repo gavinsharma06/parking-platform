@@ -66,6 +66,21 @@ Open [http://localhost:3000](http://localhost:3000).
 |---|---|---|
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
 
+### AI endpoint limits
+
+`/api/analyse-sign` and `/api/can-i-park` are rate limited through Upstash and reject oversized images before any AI call. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are required in production: without them these routes return `503` instead of running unlimited. In local development and on preview deployments they run without limits and log a warning.
+
+Every limit has a default and can be overridden per environment:
+
+| Variable | Default | Description |
+|---|---|---|
+| `AI_RATE_LIMIT_PER_MINUTE` | `10` | Requests per minute per IP, per route |
+| `AI_RATE_LIMIT_PER_DAY` | `50` | Requests per day per IP, per route |
+| `AI_ADMIN_RATE_LIMIT_PER_MINUTE` | `60` | Requests per minute for a logged-in admin |
+| `AI_ADMIN_RATE_LIMIT_PER_DAY` | `500` | Requests per day for a logged-in admin |
+| `AI_MAX_BODY_BYTES` | `4194304` | Largest request body accepted (4 MB) |
+| `AI_MAX_IMAGE_BYTES` | `3145728` | Largest decoded image accepted (3 MB) |
+
 When you add a new variable: add a placeholder line to `.env.example` and update this table. That way the next person to clone the repo knows exactly what they need.
 
 ## Project structure

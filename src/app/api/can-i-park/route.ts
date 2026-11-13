@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { evaluateSpot, formatTime, deriveParkingType } from "@/lib/parking-rules";
 import { isHalifaxLocation } from "@/lib/validation";
+import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
 import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
 
 const PROMPT = `You are a parking sign parser. Analyze this parking sign image and extract all parking rules.
@@ -151,26 +152,23 @@ function generateAnswer(rules: ParkingRule[], now: Date): { answer: string; can_
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // ── Rate limiting (before the body is read or any AI call is made) ─────────
+  const limited = await enforceAiRateLimit(req, "can-i-park");
+  if (limited) return limited;
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY is not set." }, { status: 503 });
   }
 
-  let imageBase64: string;
-  let latitude: number | null = null;
-  let longitude: number | null = null;
+  // ── Parse request body (size-capped; data URI prefix stripped) ─────────────
+  const payload = await readImageRequest(req);
+  if (!payload.ok) return payload.response;
 
-  try {
-    const body = await req.json();
-    imageBase64 = body.image;
-    if (!imageBase64) throw new Error("missing image");
-    if (typeof body.latitude === "number")  latitude  = body.latitude;
-    if (typeof body.longitude === "number") longitude = body.longitude;
-  } catch {
-    return NextResponse.json({ error: "Body must be JSON with an `image` field." }, { status: 400 });
-  }
-
-  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const base64Data = payload.imageBase64;
+  const { latitude: lat, longitude: lng } = payload.body;
+  const latitude  = typeof lat === "number" && Number.isFinite(lat) ? lat : null;
+  const longitude = typeof lng === "number" && Number.isFinite(lng) ? lng : null;
 
   // ── Gemini Vision ──────────────────────────────────────────────────────────
   const ai = new GoogleGenAI({ apiKey });
