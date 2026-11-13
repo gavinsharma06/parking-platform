@@ -125,24 +125,29 @@ function timeToMinutes(hhmm: string): number {
   return h * 60 + (m ?? 0);
 }
 
+function appliesOnDay(rule: ParkingRule, day: number): boolean {
+  return rule.days === null || rule.days.includes(day);
+}
+
 function isRuleActiveAt(rule: ParkingRule, time: HalifaxTime): boolean {
   const day = time.day;
   const minutesNow = time.minutes;
 
-  if (rule.days !== null && !rule.days.includes(day)) return false;
+  if (!rule.time_window) return appliesOnDay(rule, day);
 
-  if (rule.time_window) {
-    const start = timeToMinutes(rule.time_window.start);
-    const end = timeToMinutes(rule.time_window.end);
-    if (start <= end) {
-      if (minutesNow < start || minutesNow >= end) return false;
-    } else {
-      // Overnight window e.g. 23:00–06:00
-      if (minutesNow < start && minutesNow >= end) return false;
-    }
+  const start = timeToMinutes(rule.time_window.start);
+  const end = timeToMinutes(rule.time_window.end);
+
+  if (start <= end) {
+    return appliesOnDay(rule, day) && minutesNow >= start && minutesNow < end;
   }
 
-  return true;
+  // Overnight window e.g. 23:00–06:00. The evening part belongs to today,
+  // but the part after midnight started on the previous day, so rule.days
+  // must be checked against yesterday (Fri 23:00–06:00 covers Sat 02:00).
+  if (minutesNow >= start) return appliesOnDay(rule, day);
+  if (minutesNow < end) return appliesOnDay(rule, (day + 6) % 7);
+  return false;
 }
 
 /**

@@ -121,6 +121,49 @@ describe("evaluateSpot — time-based rules", () => {
   });
 });
 
+// ─── evaluateSpot — overnight windows use the start day (#53 item 1) ────────
+
+describe("evaluateSpot — overnight windows", () => {
+  // No parking Fri 11PM–6AM
+  const fridayNight = [rule({
+    rule_type: "no_parking",
+    is_prohibited: true,
+    days: [5],
+    time_window: { start: "23:00", end: "06:00" },
+  })];
+
+  it("is active Sat 02:00 (after midnight, started Friday)", () => {
+    expect(evaluateSpot(fridayNight, new Date("2026-05-16T02:00:00-03:00")).status).toBe("no_parking");
+  });
+
+  it("is inactive Fri 02:00 (that window started Thursday)", () => {
+    expect(evaluateSpot(fridayNight, new Date("2026-05-15T02:00:00-03:00")).status).toBe("free");
+  });
+
+  it("is active Fri 23:30 (evening part, same day)", () => {
+    expect(evaluateSpot(fridayNight, new Date("2026-05-15T23:30:00-03:00")).status).toBe("no_parking");
+  });
+
+  it("is inactive Sat 23:30 (Saturday is not in rule.days)", () => {
+    expect(evaluateSpot(fridayNight, new Date("2026-05-16T23:30:00-03:00")).status).toBe("free");
+  });
+
+  it("ends at 06:00 on Saturday", () => {
+    expect(evaluateSpot(fridayNight, new Date("2026-05-16T06:00:00-03:00")).status).toBe("free");
+  });
+
+  it("wraps Saturday night into Sunday", () => {
+    // No parking Sat 10PM–2AM, checked Sun 01:00
+    const saturdayNight = [rule({
+      rule_type: "no_parking",
+      is_prohibited: true,
+      days: [6],
+      time_window: { start: "22:00", end: "02:00" },
+    })];
+    expect(evaluateSpot(saturdayNight, new Date("2026-05-17T01:00:00-03:00")).status).toBe("no_parking");
+  });
+});
+
 // ─── evaluateSpot — status priority order ────────────────────────────────────
 
 describe("evaluateSpot — priority order", () => {
