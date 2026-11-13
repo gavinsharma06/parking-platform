@@ -151,6 +151,14 @@ function isRuleActiveAt(rule: ParkingRule, time: HalifaxTime): boolean {
 }
 
 /**
+ * Returns whether a single rule is in effect at the given instant, evaluated
+ * in Halifax time. Shared by evaluateSpot and the map bottom sheet.
+ */
+export function isRuleActive(rule: ParkingRule, now: Date = new Date()): boolean {
+  return isRuleActiveAt(rule, halifaxNow(now));
+}
+
+/**
  * Given a set of rules and the current time, returns the effective parking status.
  * Priority: no_stopping > no_parking/street_cleaning > paid > permit > accessible > free.
  * If rules exist but none are active right now, parking is implicitly free.

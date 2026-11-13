@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateSpot } from "../parking-rules";
+import { evaluateSpot, isRuleActive } from "../parking-rules";
 import type { ParkingRule } from "../parking-rules";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -161,6 +161,34 @@ describe("evaluateSpot — overnight windows", () => {
       time_window: { start: "22:00", end: "02:00" },
     })];
     expect(evaluateSpot(saturdayNight, new Date("2026-05-17T01:00:00-03:00")).status).toBe("no_parking");
+  });
+});
+
+// ─── isRuleActive — shared per-rule check used by the map ───────────────────
+
+describe("isRuleActive", () => {
+  const weekdayMeter = rule({
+    rule_type: "paid",
+    days: [1, 2, 3, 4, 5],
+    time_window: { start: "08:00", end: "18:00" },
+  });
+
+  it("is active Wed 17:00 Halifax", () => {
+    expect(isRuleActive(weekdayMeter, new Date("2026-01-14T17:00:00-04:00"))).toBe(true);
+  });
+
+  it("is inactive Wed 19:00 Halifax", () => {
+    expect(isRuleActive(weekdayMeter, new Date("2026-01-14T19:00:00-04:00"))).toBe(false);
+  });
+
+  it("checks the previous day for the after-midnight part of an overnight rule", () => {
+    const fridayNight = rule({
+      rule_type: "no_parking",
+      is_prohibited: true,
+      days: [5],
+      time_window: { start: "23:00", end: "06:00" },
+    });
+    expect(isRuleActive(fridayNight, new Date("2026-05-16T02:00:00-03:00"))).toBe(true);
   });
 });
 
