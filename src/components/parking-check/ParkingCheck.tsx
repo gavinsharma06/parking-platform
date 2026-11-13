@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RULE_TYPE_COLOR, RULE_TYPE_LABEL, formatTimeWindow, formatDays } from "@/lib/parking-rules";
 import type { ParkingRule } from "@/lib/parking-rules";
 import { captureVideoFrame, CAPTURE_JPEG_QUALITY, CAPTURE_MIME_TYPE } from "@/lib/capture";
+import { isHalifaxLocation, OUTSIDE_SERVICE_AREA_MESSAGE } from "@/lib/validation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,11 @@ export default function ParkingCheck() {
       // Get location first (~1s), then call API with both image + coords.
       // Gemini dominates latency (~4s) so the sequential overhead is negligible.
       const location = await getLocation();
+
+      // Never send a photo from outside the service area
+      if (location && !isHalifaxLocation(location.latitude, location.longitude)) {
+        throw new Error(OUTSIDE_SERVICE_AREA_MESSAGE);
+      }
 
       const res = await fetch("/api/can-i-park", {
         method:  "POST",

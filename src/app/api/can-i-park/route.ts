@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase-server";
 import { generateAnswer } from "@/lib/parking-answer";
 import { extractParkingData, geminiErrorResponse, isGeminiConfigured } from "@/lib/gemini";
-import { isHalifaxLocation } from "@/lib/validation";
+import { isHalifaxLocation, OUTSIDE_SERVICE_AREA_MESSAGE, parseCoordinates } from "@/lib/validation";
+import { saveSignSubmission } from "@/lib/sign-submissions";
 import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
 import type { ExtractedParkingData } from "@/lib/parking-rules";
 
@@ -63,9 +63,13 @@ export async function POST(req: NextRequest) {
   if (!payload.ok) return payload.response;
 
   const base64Data = payload.imageBase64;
-  const { latitude: lat, longitude: lng } = payload.body;
-  const latitude  = typeof lat === "number" && Number.isFinite(lat) ? lat : null;
-  const longitude = typeof lng === "number" && Number.isFinite(lng) ? lng : null;
+
+  // ── Location is optional, but if sent it must be inside the service area ───
+  // Checked before the AI call so out-of-area requests cost nothing.
+  const coords = parseCoordinates(payload.body.latitude, payload.body.longitude);
+  if (coords && !isHalifaxLocation(coords.latitude, coords.longitude)) {
+    return NextResponse.json({ error: OUTSIDE_SERVICE_AREA_MESSAGE }, { status: 422 });
+  }
 
   // ── Call Gemini (model, thinking level and timeout come from src/lib/gemini) ─
   let parsed: ExtractedParkingData;
@@ -80,28 +84,18 @@ export async function POST(req: NextRequest) {
   const { answer, can_park } = generateAnswer(parsed.rules, new Date());
 
   // ── Save to sign_submissions (same pipeline as manual submit) ──────────────
-  // Only if we have a valid Halifax location
-  if (latitude !== null && longitude !== null && isHalifaxLocation(latitude, longitude)) {
+  // Only when a location was sent. Non-fatal: the user still gets their answer.
+  if (coords) {
     try {
-      const supabase = createServiceRoleClient();
-      const storagePath = `submissions/${Date.now()}-${crypto.randomUUID()}.jpg`;
-      const buffer = Buffer.from(base64Data, "base64");
-
-      const { error: storageErr } = await supabase.storage
-        .from("parking-signs")
-        .upload(storagePath, buffer, { contentType: "image/jpeg", upsert: false });
-
-      if (!storageErr) {
-        await supabase.from("sign_submissions").insert({
-          image_path:      storagePath,
-          latitude,
-          longitude,
-          device_metadata: { source: "quick_check", capturedAt: new Date().toISOString() },
-          extracted_data:  parsed,
-        });
-      }
-    } catch {
-      // Non-fatal — user still gets their answer
+      await saveSignSubmission({
+        imageBase64:   base64Data,
+        coordinates:   coords,
+        source:        "quick_check",
+        userAgent:     req.headers.get("user-agent"),
+        extractedData: parsed,
+      });
+    } catch (err) {
+      console.error("[can-i-park] could not save submission:", err instanceof Error ? err.message : err);
     }
   }
 

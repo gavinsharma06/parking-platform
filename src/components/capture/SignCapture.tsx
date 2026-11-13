@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { uploadSignSubmission } from "@/lib/submissions";
 import { RULE_TYPE_COLOR, RULE_TYPE_LABEL, formatTimeWindow, formatDays } from "@/lib/parking-rules";
 import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
 import { captureVideoFrame, CAPTURE_JPEG_QUALITY, CAPTURE_MIME_TYPE } from "@/lib/capture";
+import { isHalifaxLocation, OUTSIDE_SERVICE_AREA_MESSAGE } from "@/lib/validation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,7 +13,6 @@ type Status =
   | "camera"
   | "locating"
   | "ready"
-  | "analysing"
   | "submitting"
   | "success";
 
@@ -30,17 +29,22 @@ interface Location {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function fetchAnalysis(base64: string): Promise<ExtractedParkingData> {
-  const res = await fetch("/api/analyse-sign", {
+/**
+ * Sends the photo and location to the server, which validates them, reads the
+ * sign and stores the submission. Returns the rules it found, or null if the
+ * sign could not be read (the submission is still saved for manual review).
+ */
+async function submitSign(base64: string, location: Location): Promise<ExtractedParkingData | null> {
+  const res = await fetch("/api/submissions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: base64 }),
+    body: JSON.stringify({ image: base64, latitude: location.lat, longitude: location.lng }),
   });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error((data as { error?: string }).error ?? `Server error ${res.status}`);
+    throw new Error((data as { error?: string }).error ?? "Upload failed. Check your connection and try again.");
   }
-  return res.json();
+  return (data as { extracted_data: ExtractedParkingData | null }).extracted_data;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -119,6 +123,14 @@ export default function SignCapture() {
           maximumAge: 0,
         }),
       );
+      // First gate: never send a photo from outside the service area
+      if (!isHalifaxLocation(pos.coords.latitude, pos.coords.longitude)) {
+        URL.revokeObjectURL(previewUrl);
+        setPhoto(null);
+        setStatus("idle");
+        setError(OUTSIDE_SERVICE_AREA_MESSAGE);
+        return;
+      }
       setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       setStatus("ready");
     } catch (e) {
@@ -141,40 +153,23 @@ export default function SignCapture() {
     openCamera();
   }, [photo, openCamera]);
 
-  // ── Step 4: submit — analyses then uploads in one action ──────────────────
+  // ── Step 4: submit — one request; the server reads the sign and stores it ──
 
   const submit = useCallback(async () => {
     if (!photo || !location) return;
     setError(null);
-
-    // Analyse first
-    setStatus("analysing");
-    let analysedData: ExtractedParkingData | null = null;
-    try {
-      analysedData = await fetchAnalysis(photo.base64);
-      setExtracted(analysedData);
-    } catch {
-      // Analysis failed — proceed without OCR data
-    }
-
-    // Upload
     setStatus("submitting");
+
     try {
-      await uploadSignSubmission({
-        imageBlob:  photo.blob,
-        latitude:   location.lat,
-        longitude:  location.lng,
-        deviceMetadata: { userAgent: navigator.userAgent, capturedAt: new Date().toISOString() },
-        extractedData: analysedData ?? undefined,
-      });
+      setExtracted(await submitSign(photo.base64, location));
       URL.revokeObjectURL(photo.previewUrl);
       setPhoto(null);
       setLocation(null);
       // Keep `extracted` — success screen shows it
       setStatus("success");
-    } catch {
+    } catch (e) {
       setStatus("ready");
-      setError("Upload failed. Check your connection and try again.");
+      setError(e instanceof Error ? e.message : "Upload failed. Check your connection and try again.");
     }
   }, [photo, location]);
 
@@ -248,7 +243,7 @@ export default function SignCapture() {
     );
   }
 
-  const showPreview = photo && ["locating", "ready", "analysing", "submitting"].includes(status);
+  const showPreview = photo && ["locating", "ready", "submitting"].includes(status);
 
   return (
     <div className="flex flex-col gap-5">
@@ -281,8 +276,7 @@ export default function SignCapture() {
         )}
 
         {status === "locating"   && <Overlay label="Getting your location…" />}
-        {status === "analysing"  && <Overlay label="Reading the sign…" />}
-        {status === "submitting" && <Overlay label="Uploading…" />}
+        {status === "submitting" && <Overlay label="Reading and uploading the sign…" />}
       </div>
 
       {/* ── Error ─────────────────────────────────────────────────────────── */}
@@ -335,9 +329,9 @@ export default function SignCapture() {
         </div>
       )}
 
-      {(status === "locating" || status === "analysing" || status === "submitting") && (
+      {(status === "locating" || status === "submitting") && (
         <button disabled className="w-full cursor-not-allowed rounded-full bg-indigo-400 py-3 text-sm font-semibold text-white">
-          {status === "locating" ? "Getting location…" : status === "analysing" ? "Reading sign…" : "Uploading…"}
+          {status === "locating" ? "Getting location…" : "Submitting…"}
         </button>
       )}
     </div>

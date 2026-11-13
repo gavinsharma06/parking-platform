@@ -18,6 +18,22 @@ export function isHalifaxLocation(lat: number, lng: number): boolean {
   );
 }
 
+export type Coordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+/** Returns the pair only if both are real numbers within the valid lat/lng range. */
+export function parseCoordinates(latitude: unknown, longitude: unknown): Coordinates | null {
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
+export const OUTSIDE_SERVICE_AREA_MESSAGE =
+  "Park Off only covers the Halifax Regional Municipality. Your location is outside that area.";
+
 // ─── Proximity dedup — matches import script logic ────────────────────────────
 // Returns distance in metres between two lat/lng points (Haversine)
 

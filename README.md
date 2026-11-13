@@ -82,7 +82,16 @@ GEMINI_LIVE_TEST=1 GEMINI_API_KEY=your_key GEMINI_MODEL=new-model npm test -- ge
 
 ### AI endpoint limits
 
-`/api/analyse-sign` and `/api/can-i-park` are rate limited through Upstash and reject oversized images before any AI call. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are required in production: without them these routes return `503` instead of running unlimited. In local development and on preview deployments they run without limits and log a warning.
+`/api/submissions` and `/api/can-i-park` are the only routes that call the AI model or store photos. Each request passes these gates in order, and stops at the first one it fails:
+
+1. **Rate limit** per IP (or per admin), through Upstash
+2. **Size**: body and decoded image size caps; the image must be a JPEG
+3. **Location**: coordinates must be inside the Halifax Regional Municipality
+4. AI call, then storage
+
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are required in production: without them these routes return `503` instead of running unlimited. In local development and on preview deployments they run without limits and log a warning.
+
+Browsers never write to Supabase directly. Photos and `sign_submissions` rows are created by the server with the service role, and the migration `20261113000000_server_only_submissions.sql` removes the anonymous insert policies. Run that migration only after this version of the app is deployed.
 
 Every limit has a default and can be overridden per environment:
 
@@ -94,6 +103,18 @@ Every limit has a default and can be overridden per environment:
 | `AI_ADMIN_RATE_LIMIT_PER_DAY` | `500` | Requests per day for a logged-in admin |
 | `AI_MAX_BODY_BYTES` | `4194304` | Largest request body accepted (4 MB) |
 | `AI_MAX_IMAGE_BYTES` | `3145728` | Largest decoded image accepted (3 MB) |
+
+### Cost and abuse checklist
+
+These are set in each provider's dashboard, not in code. Confirm them before sharing the app publicly:
+
+- [ ] Vercel production has `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` pointing at a live Upstash database
+- [ ] Google AI Studio / Google Cloud: budget alert on the project that owns `GEMINI_API_KEY`
+- [ ] Supabase: spend cap on, and usage alerts for database size and storage
+- [ ] Vercel: spend management limit and usage notifications
+- [ ] Upstash: daily request budget on the rate-limit database
+- [ ] Mapbox: token restricted to the production URL, and a usage alert
+- [ ] Migration `20261113000000_server_only_submissions.sql` applied to the production database
 
 When you add a new variable: add a placeholder line to `.env.example` and update this table. That way the next person to clone the repo knows exactly what they need.
 
