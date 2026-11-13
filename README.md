@@ -70,6 +70,17 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Parking rules are always evaluated in this timezone, on the server and in the browser, so the answer does not depend on where the server runs or where the visitor is.
 
+### Admin sign-in
+
+| Variable | Required | Description |
+|---|---|---|
+| `ADMIN_GAVIN_PASSWORD`, `ADMIN_ISHANT_PASSWORD` | Yes | Password for each admin account |
+| `ADMIN_SESSION_SECRET` | Production | Random string of 32+ characters used to sign admin sessions. Without it, sign-in returns `503` in production |
+| `ADMIN_LOGIN_MAX_ATTEMPTS` | No | Sign-in attempts allowed per IP in the window. Defaults to `5` |
+| `ADMIN_LOGIN_WINDOW_MINUTES` | No | Length of that window in minutes. Defaults to `10` |
+
+Sign-in attempts are rate limited through Upstash, so `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are also required for admin sign-in in production. Changing `ADMIN_SESSION_SECRET` signs every admin out.
+
 ### AI endpoint limits
 
 `/api/analyse-sign` and `/api/can-i-park` are rate limited through Upstash and reject oversized images before any AI call. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are required in production: without them these routes return `503` instead of running unlimited. In local development and on preview deployments they run without limits and log a warning.

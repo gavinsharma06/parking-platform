@@ -22,7 +22,9 @@ export default function AdminLoginPage() {
       if (res.ok) {
         window.location.href = "/admin";
       } else {
-        setError("Incorrect username or password.");
+        // Show the server's reason: wrong credentials, too many attempts, or not configured
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error ?? "Incorrect username or password.");
       }
     } catch {
       setError("Something went wrong. Try again.");

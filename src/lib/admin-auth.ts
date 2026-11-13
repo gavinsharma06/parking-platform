@@ -24,6 +24,57 @@ export function getAdminPassword(username: string): string | undefined {
   return admins[normalizeAdminUsername(username)];
 }
 
+// ─── Password check ───────────────────────────────────────────────────────────
+
+/** Compared against when the username is unknown, so both paths take the same time. */
+const UNKNOWN_USER_PASSWORD = "unknown-admin-user";
+
+async function sha256(value: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+}
+
+/**
+ * Checks a login attempt without leaking, through response time, how much of
+ * the password was right or whether the username exists. Both values are
+ * hashed first so the comparison always runs over the same number of bytes.
+ */
+export async function verifyAdminPassword(username: string, password: unknown): Promise<boolean> {
+  const expected = getAdminPassword(username);
+  const [expectedHash, actualHash] = await Promise.all([
+    sha256(expected ?? UNKNOWN_USER_PASSWORD),
+    sha256(typeof password === "string" ? password : ""),
+  ]);
+
+  let difference = 0;
+  for (let i = 0; i < expectedHash.length; i++) {
+    difference |= expectedHash[i] ^ actualHash[i];
+  }
+
+  return difference === 0 && Boolean(expected) && typeof password === "string" && password.length > 0;
+}
+
+// ─── Login attempt limits ─────────────────────────────────────────────────────
+
+const DEFAULT_LOGIN_MAX_ATTEMPTS = 5;
+const DEFAULT_LOGIN_WINDOW_MINUTES = 10;
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const value = Number(raw?.trim());
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+/** Login attempts allowed per IP. Override with ADMIN_LOGIN_MAX_ATTEMPTS / ADMIN_LOGIN_WINDOW_MINUTES. */
+export function getAdminLoginLimit(): { name: string; max: number; window: `${number} m` } {
+  const minutes = positiveInt(process.env.ADMIN_LOGIN_WINDOW_MINUTES, DEFAULT_LOGIN_WINDOW_MINUTES);
+  return {
+    name: "attempts",
+    max: positiveInt(process.env.ADMIN_LOGIN_MAX_ATTEMPTS, DEFAULT_LOGIN_MAX_ATTEMPTS),
+    window: `${minutes} m`,
+  };
+}
+
+// ─── Session cookies ──────────────────────────────────────────────────────────
+
 export function getAdminSessionCookieOptions() {
   return {
     httpOnly: true,
@@ -44,9 +95,24 @@ export function getAdminUserCookieOptions() {
   };
 }
 
+function isProductionDeployment(): boolean {
+  const vercelEnv = process.env.VERCEL_ENV;
+  return vercelEnv ? vercelEnv === "production" : process.env.NODE_ENV === "production";
+}
+
+/** True when sessions can be signed. In production this requires ADMIN_SESSION_SECRET. */
+export function isAdminSessionConfigured(): boolean {
+  return getSessionSecret() !== null;
+}
+
 function getSessionSecret(): string | null {
   const explicitSecret = process.env.ADMIN_SESSION_SECRET?.trim();
   if (explicitSecret) return explicitSecret;
+
+  // Production must sign with a dedicated secret. Deriving the key from the
+  // passwords would make sessions only as strong as the weakest password, and
+  // would let anyone who learns a password forge a session for any admin.
+  if (isProductionDeployment()) return null;
 
   const passwordBackedSecret = [
     process.env.ADMIN_GAVIN_PASSWORD,

@@ -1,4 +1,4 @@
-import type { Duration } from "@upstash/ratelimit";
+import type { RateWindow } from "./rate-limit-guard";
 
 // ─── Limits for the public AI endpoints ───────────────────────────────────────
 // Every value has a default and can be overridden per environment with an env
@@ -25,11 +25,7 @@ function readLimit(name: LimitName): number {
   return Number.isInteger(value) && value > 0 ? value : DEFAULTS[name];
 }
 
-export type RateWindow = {
-  name: "minute" | "day";
-  max: number;
-  window: Duration;
-};
+export type { RateWindow };
 
 export type AiLimits = {
   public: RateWindow[];
