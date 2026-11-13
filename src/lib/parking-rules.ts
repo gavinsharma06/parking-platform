@@ -316,6 +316,48 @@ export function deriveParkingType(rules: ParkingRule[]): "free" | "paid" | "perm
   return "unknown";
 }
 
+// ─── Merging rules from several photos of the same spot ───────────────────────
+
+/**
+ * Identity of a rule: everything that changes what a driver may do. `raw_text`
+ * is left out on purpose — two photos of one sign rarely OCR to identical text.
+ */
+function ruleKey(rule: ParkingRule): string {
+  return JSON.stringify([
+    rule.rule_type,
+    rule.is_prohibited,
+    rule.tow_away,
+    rule.days ? [...rule.days].sort((a, b) => a - b) : null,
+    rule.time_window ? [rule.time_window.start, rule.time_window.end] : null,
+    rule.direction ?? null,
+    rule.time_limit_minutes ?? null,
+    rule.cost_per_hour ?? null,
+    rule.permit_zone ?? null,
+  ]);
+}
+
+export function rulesEqual(a: ParkingRule, b: ParkingRule): boolean {
+  return ruleKey(a) === ruleKey(b);
+}
+
+/**
+ * Adds `incoming` rules to `existing`, skipping any rule already present.
+ * Existing rules keep their order; duplicates inside either list are dropped.
+ */
+export function mergeRules(existing: ParkingRule[], incoming: ParkingRule[]): ParkingRule[] {
+  const seen = new Set<string>();
+  const merged: ParkingRule[] = [];
+
+  for (const rule of [...existing, ...incoming]) {
+    const key = ruleKey(rule);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(rule);
+  }
+
+  return merged;
+}
+
 // ─── Haversine distance (metres) ──────────────────────────────────────────────
 
 export function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
