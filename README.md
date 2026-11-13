@@ -66,6 +66,9 @@ Open [http://localhost:3000](http://localhost:3000).
 |---|---|---|
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
 | `CRON_SECRET` | Production | Random string of 32+ characters. Protects `/api/health` |
+| `NEXT_PUBLIC_PARKING_TIME_ZONE` | No | IANA timezone the parking rules are evaluated in. Defaults to `America/Halifax` |
+
+Parking rules are always evaluated in this timezone, on the server and in the browser, so the answer does not depend on where the server runs or where the visitor is.
 
 ### AI endpoint limits
 

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createServiceRoleClient } from "@/lib/supabase-server";
-import { evaluateSpot, formatTime, deriveParkingType } from "@/lib/parking-rules";
+import { deriveParkingType } from "@/lib/parking-rules";
+import { generateAnswer } from "@/lib/parking-answer";
 import { isHalifaxLocation } from "@/lib/validation";
 import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
-import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
+import type { ExtractedParkingData } from "@/lib/parking-rules";
 
 const PROMPT = `You are a parking sign parser. Analyze this parking sign image and extract all parking rules.
 
@@ -46,108 +47,6 @@ Rules:
 - direction: "left" / "right" / "both" / null based on arrow symbols
 
 Respond with raw JSON only, no markdown, no code fences.`;
-
-// ─── Plain-language answer ────────────────────────────────────────────────────
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + (m ?? 0);
-}
-
-function formatLimit(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h > 0 ? `${h}h` : ""}${m > 0 ? ` ${m}m` : ""}`.trim();
-}
-
-function generateAnswer(rules: ParkingRule[], now: Date): { answer: string; can_park: boolean | null } {
-  const status = evaluateSpot(rules, now);
-  const day = now.getDay();
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
-
-  // Find the next upcoming restriction — include permit_only so we can warn
-  // "free now, permit zone starts at 8AM" even though permit_only is not
-  // is_prohibited (it's a restriction that affects whether you can stay).
-  let nextRestrictionAt: string | null = null;
-  for (const rule of rules) {
-    const isRestriction = rule.is_prohibited || rule.rule_type === "permit_only";
-    if (!isRestriction || !rule.time_window) continue;
-    if (rule.days !== null && !rule.days.includes(day)) continue;
-    const start = toMinutes(rule.time_window.start);
-    if (start > minutesNow) {
-      if (!nextRestrictionAt || start < toMinutes(nextRestrictionAt)) {
-        nextRestrictionAt = rule.time_window.start;
-      }
-    }
-  }
-
-  switch (status.status) {
-    case "no_stopping":
-      return { answer: "No — tow-away zone in effect. Do not stop here.", can_park: false };
-
-    case "no_parking": {
-      // If ALL active prohibited rules are directional (left/right only, not both/null),
-      // the other side may be free — give a directional answer instead of a blanket "no".
-      const activeProhibited = status.activeRules.filter((r) => r.is_prohibited);
-      const allDirectional =
-        activeProhibited.length > 0 &&
-        activeProhibited.every((r) => r.direction === "left" || r.direction === "right");
-
-      if (allDirectional) {
-        const leftBlocked  = activeProhibited.some((r) => r.direction === "left");
-        const rightBlocked = activeProhibited.some((r) => r.direction === "right");
-        if (leftBlocked && !rightBlocked) {
-          const cleaningNote = nextRestrictionAt ? ` Street cleaning starts at ${formatTime(nextRestrictionAt)}.` : "";
-          return { answer: `No parking ← left (always). The right side is free to park right now.${cleaningNote}`, can_park: true };
-        }
-        if (rightBlocked && !leftBlocked) {
-          const cleaningNote = nextRestrictionAt ? ` Street cleaning starts at ${formatTime(nextRestrictionAt)}.` : "";
-          return { answer: `No parking → right (always). The left side is free to park right now.${cleaningNote}`, can_park: true };
-        }
-      }
-
-      const active = status.activeRules.find((r) => r.is_prohibited && r.time_window);
-      if (active?.time_window) {
-        return {
-          answer: `No — no parking right now. Restriction lifts at ${formatTime(active.time_window.end)}.`,
-          can_park: false,
-        };
-      }
-      return { answer: "No — no parking allowed here.", can_park: false };
-    }
-
-    case "paid": {
-      const paid = status.activeRules.find((r) => r.rule_type === "paid");
-      const limit = paid?.time_limit_minutes;
-      const end = paid?.time_window?.end;
-      let answer = "Yes — paid parking.";
-      if (limit) answer = `Yes — paid parking, ${formatLimit(limit)} maximum.`;
-      if (end) answer += ` Meters enforced until ${formatTime(end)}.`;
-      return { answer, can_park: true };
-    }
-
-    case "permit":
-      return { answer: "No — permit zone. A residential parking permit is required.", can_park: false };
-
-    case "accessible":
-      return { answer: "No — accessible parking only. A valid accessibility permit is required.", can_park: false };
-
-    case "free": {
-      const limitRule = rules.find((r) => r.time_limit_minutes && !r.is_prohibited);
-      const timeLimit = limitRule?.time_limit_minutes;
-      let answer = "Yes — free to park here.";
-      if (timeLimit) answer = `Yes — free parking, ${formatLimit(timeLimit)} maximum.`;
-      if (nextRestrictionAt) answer += ` Restrictions begin at ${formatTime(nextRestrictionAt)}.`;
-      return { answer, can_park: true };
-    }
-
-    default:
-      return {
-        answer: "Unable to read this sign clearly. Please check the posted sign directly.",
-        can_park: null,
-      };
-  }
-}
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
