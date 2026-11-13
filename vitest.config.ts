@@ -6,6 +6,9 @@ export default defineConfig({
     environment: "node",
     pool: "threads",
     poolOptions: { threads: { singleThread: true } },
+    // Worker threads cannot change the timezone at runtime, so the TZ tests
+    // run in a forked process where process.env.TZ takes effect
+    poolMatchGlobs: [["**/timezone-independence.test.ts", "forks"]],
   },
   resolve: {
     alias: {
