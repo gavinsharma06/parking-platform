@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import type { ExtractedParkingData } from "@/lib/parking-rules";
-import { deriveParkingType } from "@/lib/parking-rules";
 import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
 import { fetchFewShotExamples, buildPrompt } from "@/lib/training-examples";
+import { extractParkingData, geminiErrorResponse, isGeminiConfigured } from "@/lib/gemini";
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
@@ -13,8 +11,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   // ── Gemini API key check ───────────────────────────────────────────────────
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!isGeminiConfigured()) {
     return NextResponse.json(
       { error: "GEMINI_API_KEY is not set. Add it to .env." },
       { status: 503 },
@@ -29,50 +26,16 @@ export async function POST(req: NextRequest) {
   // ── Parse request body (size-capped; data URI prefix stripped) ─────────────
   const payload = await readImageRequest(req);
   if (!payload.ok) return payload.response;
-  const base64Data = payload.imageBase64;
 
   // ── Build prompt with few-shot examples ────────────────────────────────────
-  // Await here — almost certainly already resolved given body parsing above.
   // fetchFewShotExamples never throws, so no try/catch needed.
-  const examples = await examplesPromise;
-  const prompt = buildPrompt(examples);
+  const prompt = buildPrompt(await examplesPromise);
 
-  // ── Call Gemini Vision ─────────────────────────────────────────────────────
-  const ai = new GoogleGenAI({ apiKey });
-
-  let rawJson: string;
+  // ── Call Gemini (model, thinking level and timeout come from src/lib/gemini) ─
   try {
-    const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-        { text: prompt },
-      ],
-      // Low thinking level — structured extraction doesn't need deep reasoning,
-      // and this halves time-to-first-token vs the "high" default.
-      config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-    });
-    rawJson = (result.text ?? "").trim();
+    return NextResponse.json(await extractParkingData(payload.imageBase64, prompt));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Gemini API error: ${msg}` }, { status: 502 });
+    const { status, body } = geminiErrorResponse(err);
+    return NextResponse.json(body, { status });
   }
-
-  // ── Parse Gemini response ──────────────────────────────────────────────────
-  let parsed: ExtractedParkingData;
-  try {
-    // Strip accidental markdown fences if model ignores instructions
-    const clean = rawJson.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    parsed = JSON.parse(clean) as ExtractedParkingData;
-  } catch {
-    return NextResponse.json(
-      { error: "Gemini returned unparseable JSON", raw: rawJson },
-      { status: 500 },
-    );
-  }
-
-  // Re-derive parking_type from rules as a sanity check
-  parsed.parking_type = deriveParkingType(parsed.rules);
-
-  return NextResponse.json(parsed);
 }
