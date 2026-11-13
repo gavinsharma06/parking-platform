@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { createServiceRoleClient } from "@/lib/supabase-server";
-import { evaluateSpot, formatTime, deriveParkingType } from "@/lib/parking-rules";
+import { evaluateSpot, formatTime, deriveParkingType, halifaxNow } from "@/lib/parking-rules";
 import { isHalifaxLocation } from "@/lib/validation";
 import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
 
@@ -61,8 +61,8 @@ function formatLimit(minutes: number): string {
 
 function generateAnswer(rules: ParkingRule[], now: Date): { answer: string; can_park: boolean | null } {
   const status = evaluateSpot(rules, now);
-  const day = now.getDay();
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  // Use Halifax local time, not the server timezone (UTC on Vercel)
+  const { day, minutes: minutesNow } = halifaxNow(now);
 
   // Find the next upcoming restriction — include permit_only so we can warn
   // "free now, permit zone starts at 8AM" even though permit_only is not
