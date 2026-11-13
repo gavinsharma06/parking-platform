@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RULE_TYPE_COLOR, RULE_TYPE_LABEL, formatTimeWindow, formatDays } from "@/lib/parking-rules";
 import type { ParkingRule } from "@/lib/parking-rules";
+import { captureVideoFrame, CAPTURE_JPEG_QUALITY, CAPTURE_MIME_TYPE } from "@/lib/capture";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,13 +82,10 @@ export default function ParkingCheck() {
     const video = videoRef.current;
     if (!video) return;
 
-    const canvas = document.createElement("canvas");
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    const canvas = captureVideoFrame(video);
     stopStream();
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const dataUrl = canvas.toDataURL(CAPTURE_MIME_TYPE, CAPTURE_JPEG_QUALITY);
     setPreview(dataUrl);
     setStatus("checking");
     setError(null);
