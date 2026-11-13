@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import mapboxgl from "mapbox-gl";
 import type { GeoJSONSource } from "mapbox-gl";
 import type { FeatureCollection, Point } from "geojson";
@@ -18,6 +19,8 @@ import {
   HALIFAX_DEFAULT_PAID_RULES,
 } from "@/lib/parking-rules";
 import type { SpotSchedule, ParkingRule } from "@/lib/parking-rules";
+import { resolveSpotSource, SPOT_SOURCE_NOTICE } from "@/lib/spot-source";
+import type { SpotDataSource } from "@/lib/spot-source";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -172,6 +175,8 @@ export default function ParkingMap() {
 
   const [spots,       setSpots]       = useState<Spot[]>([]);
   const [selected,    setSelected]    = useState<Spot | null>(null);
+  // null until the first query settles, so nothing flashes while loading
+  const [dataSource,  setDataSource]  = useState<SpotDataSource | null>(null);
   const [query,       setQuery]       = useState("");
   const [results,     setResults]     = useState<SearchResult[]>([]);
   const [searching,   setSearching]   = useState(false);
@@ -180,14 +185,40 @@ export default function ParkingMap() {
   // ── Fetch spots ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    supabase
-      .from("parking_spots")
-      .select("id,latitude,longitude,parking_type,street_name,from_street,to_street,time_limit_minutes,cost_per_hour,notes,schedule")
-      .eq("is_active", true)
-      .then(({ data }) => {
-        const raw = (data && data.length > 0 ? data : SAMPLE_SPOTS) as typeof SAMPLE_SPOTS;
-        setSpots(computeSpots(raw, new Date()));
-      });
+    let cancelled = false;
+
+    async function loadSpots() {
+      let rows: typeof SAMPLE_SPOTS | null = null;
+      let failure: unknown = null;
+
+      try {
+        const { data, error } = await supabase
+          .from("parking_spots")
+          .select("id,latitude,longitude,parking_type,street_name,from_street,to_street,time_limit_minutes,cost_per_hour,notes,schedule")
+          .eq("is_active", true);
+        rows = data as typeof SAMPLE_SPOTS | null;
+        failure = error;
+      } catch (err) {
+        // Network-level failure (offline, wrong URL): the client rejects instead of returning an error
+        failure = err;
+      }
+
+      if (cancelled) return;
+
+      const resolved = resolveSpotSource(rows, failure);
+      if (resolved.source === "error") {
+        console.error(
+          "[map] could not load parking spots, showing demo data:",
+          failure instanceof Error ? failure.message : (failure as { message?: string })?.message ?? failure,
+        );
+      }
+
+      setDataSource(resolved.source);
+      setSpots(computeSpots(resolved.source === "live" ? resolved.rows : SAMPLE_SPOTS, new Date()));
+    }
+
+    loadSpots();
+    return () => { cancelled = true; };
   }, []);
 
   // Refresh status every 5 minutes so colors update without a page reload
@@ -475,6 +506,27 @@ export default function ParkingMap() {
           </ul>
         )}
       </div>
+
+      {/* ── Data source notice ──────────────────────────────────────────── */}
+      {/* Sits under the search bar, below its results dropdown, and stops short
+          of the map controls on the right so it never covers them on a phone. */}
+      {dataSource && dataSource !== "live" && (
+        <Link
+          href="/submit"
+          role="status"
+          className={`absolute left-3 top-[4.25rem] z-[5] flex max-w-[calc(100%-4.5rem)] items-center gap-1.5 rounded-2xl border px-3 py-1.5 text-xs font-medium leading-snug shadow-md backdrop-blur-sm ${
+            dataSource === "error"
+              ? "border-red-200 bg-red-50/95 text-red-800"
+              : "border-amber-200 bg-amber-50/95 text-amber-900"
+          }`}
+        >
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${dataSource === "error" ? "bg-red-500" : "bg-amber-500"}`}
+          />
+          <span className="min-w-0">{SPOT_SOURCE_NOTICE[dataSource]}</span>
+          <span className="shrink-0 underline underline-offset-2">Add a sign</span>
+        </Link>
+      )}
 
       {/* ── Map canvas ──────────────────────────────────────────────────── */}
       <div ref={containerRef} className="h-full w-full" />
