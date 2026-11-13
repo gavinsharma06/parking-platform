@@ -22,7 +22,8 @@ function rule(overrides: Partial<ParkingRule>): ParkingRule {
   };
 }
 
-const NOW = new Date("2026-05-16T14:00:00"); // Saturday 2pm
+// Saturday 2pm Halifax time (ADT, UTC-3)
+const NOW = new Date("2026-05-16T14:00:00-03:00");
 
 // ─── evaluateSpot — basic status priority ─────────────────────────────────────
 

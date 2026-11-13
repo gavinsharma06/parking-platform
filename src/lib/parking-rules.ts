@@ -125,9 +125,9 @@ function timeToMinutes(hhmm: string): number {
   return h * 60 + (m ?? 0);
 }
 
-function isRuleActive(rule: ParkingRule, now: Date): boolean {
-  const day = now.getDay();
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
+function isRuleActiveAt(rule: ParkingRule, time: HalifaxTime): boolean {
+  const day = time.day;
+  const minutesNow = time.minutes;
 
   if (rule.days !== null && !rule.days.includes(day)) return false;
 
@@ -151,7 +151,9 @@ function isRuleActive(rule: ParkingRule, now: Date): boolean {
  * If rules exist but none are active right now, parking is implicitly free.
  */
 export function evaluateSpot(rules: ParkingRule[], now: Date = new Date()): SpotStatus {
-  const activeRules = rules.filter((r) => isRuleActive(r, now));
+  // Evaluate in Halifax time so the result does not depend on the host timezone
+  const time = halifaxNow(now);
+  const activeRules = rules.filter((r) => isRuleActiveAt(r, time));
 
   const prohibited = activeRules.filter((r) => r.is_prohibited);
 
