@@ -65,8 +65,15 @@ Open [http://localhost:3000](http://localhost:3000).
 | Variable | Required | Description |
 |---|---|---|
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
+| `CRON_SECRET` | Production | Random string of 32+ characters. Protects `/api/health` |
 
 When you add a new variable: add a placeholder line to `.env.example` and update this table. That way the next person to clone the repo knows exactly what they need.
+
+## Keep alive
+
+Supabase pauses free projects after about a week with no activity. A Vercel Cron job (see `vercel.json`) calls `/api/health` once a day at 09:00 UTC, which runs one small read against the database so the project stays active.
+
+The endpoint only answers requests that send `Authorization: Bearer <CRON_SECRET>`. Vercel sends this header automatically on cron calls, but only if `CRON_SECRET` is set in the Vercel project's environment variables. Without it, every call returns `401` and the database will still pause.
 
 ## Project structure
 
