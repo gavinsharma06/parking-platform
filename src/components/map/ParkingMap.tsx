@@ -8,6 +8,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "@/lib/supabase";
 import {
   evaluateSpot,
+  isRuleActiveAt,
+  localClock,
   formatDays,
   formatTimeWindow,
   STATUS_COLOR,
@@ -424,7 +426,7 @@ export default function ParkingMap() {
   const rules: ParkingRule[] = explicitRules.length > 0
     ? explicitRules
     : usingHrmDefault ? HALIFAX_DEFAULT_PAID_RULES : [];
-  const now = new Date();
+  const clock = localClock();
   const mapsUrl = selected
     ? `https://www.google.com/maps/dir/?api=1&destination=${selected.latitude},${selected.longitude}`
     : "";
@@ -556,21 +558,8 @@ export default function ParkingMap() {
                 </p>
                 <div className="space-y-2">
                   {rules.map((rule, i) => {
-                    const active = (() => {
-                      // Quick active check for highlighting
-                      const day = now.getDay();
-                      const mins = now.getHours() * 60 + now.getMinutes();
-                      if (rule.days && !rule.days.includes(day)) return false;
-                      if (rule.time_window) {
-                        const s = rule.time_window.start.split(":").map(Number);
-                        const e = rule.time_window.end.split(":").map(Number);
-                        const sm = s[0] * 60 + s[1];
-                        const em = e[0] * 60 + e[1];
-                        if (sm <= em) return mins >= sm && mins < em;
-                        return mins >= sm || mins < em;
-                      }
-                      return true;
-                    })();
+                    // Same check the pin colour uses, in the parking timezone
+                    const active = isRuleActiveAt(rule, clock);
 
                     return (
                       <div
