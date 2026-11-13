@@ -74,14 +74,72 @@ export const STATUS_LABEL: Record<string, string> = {
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
-function timeToMinutes(hhmm: string): number {
+export function timeToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + (m ?? 0);
 }
 
-function isRuleActive(rule: ParkingRule, now: Date): boolean {
-  const day = now.getDay();
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
+// ─── Local clock ──────────────────────────────────────────────────────────────
+// Sign rules are written in the local time of the street they stand on, so
+// they must be evaluated in that timezone — never in the timezone of whatever
+// machine runs the code (servers usually run in UTC, visitors may be anywhere).
+
+const DEFAULT_PARKING_TIME_ZONE = "America/Halifax";
+
+/** IANA timezone the parking rules apply in. Override with NEXT_PUBLIC_PARKING_TIME_ZONE. */
+export const PARKING_TIME_ZONE =
+  process.env.NEXT_PUBLIC_PARKING_TIME_ZONE?.trim() || DEFAULT_PARKING_TIME_ZONE;
+
+export type LocalClock = {
+  day: number;     // 0=Sun … 6=Sat
+  minutes: number; // minutes since local midnight
+};
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function getClockFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = clockFormatters.get(timeZone);
+  if (!formatter) {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    };
+    try {
+      formatter = new Intl.DateTimeFormat("en-US", { ...options, timeZone });
+    } catch {
+      // Unknown timezone name in the env var: fall back rather than crash.
+      formatter = new Intl.DateTimeFormat("en-US", { ...options, timeZone: DEFAULT_PARKING_TIME_ZONE });
+    }
+    clockFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/** Weekday and time of day for `date` as seen on a clock in `timeZone`. */
+export function localClock(date: Date = new Date(), timeZone: string = PARKING_TIME_ZONE): LocalClock {
+  let weekday = "";
+  let hour = 0;
+  let minute = 0;
+
+  for (const part of getClockFormatter(timeZone).formatToParts(date)) {
+    if (part.type === "weekday") weekday = part.value;
+    else if (part.type === "hour") hour = Number(part.value);
+    else if (part.type === "minute") minute = Number(part.value);
+  }
+
+  return { day: WEEKDAY_INDEX[weekday], minutes: hour * 60 + minute };
+}
+
+/** Whether `rule` applies at the given local day and time. */
+export function isRuleActiveAt(rule: ParkingRule, clock: LocalClock): boolean {
+  const day = clock.day;
+  const minutesNow = clock.minutes;
 
   if (rule.days !== null && !rule.days.includes(day)) return false;
 
@@ -99,13 +157,20 @@ function isRuleActive(rule: ParkingRule, now: Date): boolean {
   return true;
 }
 
+/** Whether `rule` applies at the instant `now`, in the parking timezone. */
+export function isRuleActive(rule: ParkingRule, now: Date = new Date()): boolean {
+  return isRuleActiveAt(rule, localClock(now));
+}
+
 /**
  * Given a set of rules and the current time, returns the effective parking status.
+ * `now` is an instant; it is evaluated in the parking timezone, not the host's.
  * Priority: no_stopping > no_parking/street_cleaning > paid > permit > accessible > free.
  * If rules exist but none are active right now, parking is implicitly free.
  */
 export function evaluateSpot(rules: ParkingRule[], now: Date = new Date()): SpotStatus {
-  const activeRules = rules.filter((r) => isRuleActive(r, now));
+  const clock = localClock(now);
+  const activeRules = rules.filter((r) => isRuleActiveAt(r, clock));
 
   const prohibited = activeRules.filter((r) => r.is_prohibited);
 

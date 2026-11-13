@@ -22,7 +22,9 @@ function rule(overrides: Partial<ParkingRule>): ParkingRule {
   };
 }
 
-const NOW = new Date("2026-05-16T14:00:00"); // Saturday 2pm
+// Saturday 2pm in Halifax (ADT, UTC-3). An explicit offset keeps the fixture the
+// same instant no matter which timezone the tests run in.
+const NOW = new Date("2026-05-16T14:00:00-03:00");
 
 // ─── evaluateSpot — basic status priority ─────────────────────────────────────
 
