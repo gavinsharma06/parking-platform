@@ -11,11 +11,11 @@ const PAY_STATIONS_URL =
   "https://services2.arcgis.com/11XBiaBYA9Ep0yNJ/arcgis/rest/services/Parking_Pay_Stations/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson";
 
 // ── Supabase client (uses service role to bypass RLS) ─────────────────────────
-// Note: SUPABASE_SECRET_KEY must NOT have NEXT_PUBLIC_ prefix — keep it server-only
+// Note: SUPABASE_SECRET_KEY must never use a public prefix, keep it server only
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_SECRET_KEY,
+  process.env.SUPABASE_SECRET_KEY,
 );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
