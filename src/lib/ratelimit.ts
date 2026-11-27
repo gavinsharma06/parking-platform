@@ -6,16 +6,27 @@ import { Redis } from "@upstash/redis";
 let redis: Redis | null = null;
 const limiters = new Map<string, Ratelimit>();
 
+function readCredentials(url?: string, token?: string) {
+  const restUrl = url?.trim();
+  const restToken = token?.trim();
+  return restUrl && restToken ? { url: restUrl, token: restToken } : null;
+}
+
+function getRedisCredentials() {
+  return readCredentials(process.env.KV_REST_API_URL, process.env.KV_REST_API_TOKEN)
+    ?? readCredentials(process.env.UPSTASH_REDIS_REST_URL, process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
 export function isRateLimitConfigured(): boolean {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+  return getRedisCredentials() !== null;
 }
 
 function getRedis(): Redis {
   if (!redis) {
-    redis = new Redis({
-      url:   process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-    });
+    const credentials = getRedisCredentials();
+    if (!credentials) throw new Error("Upstash REST credentials are missing");
+
+    redis = new Redis(credentials);
   }
   return redis;
 }

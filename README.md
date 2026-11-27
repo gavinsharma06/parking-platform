@@ -67,12 +67,16 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
 | `CRON_SECRET` | Production | Random string of 32+ characters. Protects `/api/health` |
 | `NEXT_PUBLIC_PARKING_TIME_ZONE` | No | IANA timezone the parking rules are evaluated in. Defaults to `America/Halifax` |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | One pair in production | Preferred Upstash REST credentials provisioned by the Vercel integration |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | One pair in production | Alternative Upstash REST credentials for local development or other hosts |
 
 Parking rules are always evaluated in this timezone, on the server and in the browser, so the answer does not depend on where the server runs or where the visitor is.
 
 ### AI endpoint limits
 
-`/api/analyse-sign` and `/api/can-i-park` are rate limited through Upstash and reject oversized images before any AI call. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are required in production: without them these routes return `503` instead of running unlimited. In local development and on preview deployments they run without limits and log a warning.
+`/api/analyse-sign` and `/api/can-i-park` use Upstash for rate limiting and reject oversized images before any AI call. The app uses the Vercel pair when both values are set. If either value is missing, it checks for the complete `UPSTASH_REDIS_REST_*` pair. Use a token with write access because rate limiting updates Redis counters. The app ignores `KV_REST_API_READ_ONLY_TOKEN`.
+
+In production, missing or invalid credentials and Redis connection failures return `503`. Local development and Vercel previews allow requests and log the configuration or connection problem when the limiter is unavailable.
 
 Every limit has a default and can be overridden per environment:
 

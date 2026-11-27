@@ -41,12 +41,12 @@ export async function enforceAiRateLimit(
   if (!isRateLimitConfigured()) {
     // Never serve unlimited AI calls in production because of a missing env var.
     if (isProductionDeployment()) {
-      console.error("[rate-limit] Upstash env vars are missing; refusing AI request.");
+      console.error("[rate-limit] Upstash REST credentials are missing or incomplete.");
       return rateLimitUnavailable();
     }
     if (!warnedMissingConfig) {
       warnedMissingConfig = true;
-      console.warn("[rate-limit] Upstash env vars are not set; AI routes are not rate limited.");
+      console.warn("[rate-limit] Upstash REST credentials are missing or incomplete. AI routes are not rate limited.");
     }
     return null;
   }
@@ -87,8 +87,8 @@ export async function enforceAiRateLimit(
         );
       }
     }
-  } catch (err) {
-    console.error("[rate-limit] check failed:", err instanceof Error ? err.message : err);
+  } catch {
+    console.error("[rate-limit] Upstash check failed:", route);
     if (isProductionDeployment()) return rateLimitUnavailable();
   }
 
