@@ -507,26 +507,24 @@ export default function ParkingMap() {
         )}
       </div>
 
-      {/* ── Data source notice ──────────────────────────────────────────── */}
-      {/* Sits under the search bar, below its results dropdown, and stops short
-          of the map controls on the right so it never covers them on a phone. */}
-      {dataSource && dataSource !== "live" && (
-        <Link
-          href="/submit"
-          role="status"
-          className={`absolute left-3 top-[4.25rem] z-[5] flex max-w-[calc(100%-4.5rem)] items-center gap-1.5 rounded-2xl border px-3 py-1.5 text-xs font-medium leading-snug shadow-md backdrop-blur-sm ${
-            dataSource === "error"
-              ? "border-red-200 bg-red-50/95 text-red-800"
-              : "border-amber-200 bg-amber-50/95 text-amber-900"
-          }`}
-        >
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${dataSource === "error" ? "bg-red-500" : "bg-amber-500"}`}
-          />
-          <span className="min-w-0">{SPOT_SOURCE_NOTICE[dataSource]}</span>
-          <span className="shrink-0 underline underline-offset-2">Add a sign</span>
-        </Link>
-      )}
+      <div role="status">
+        {dataSource && dataSource !== "live" && (
+          <Link
+            href="/submit"
+            className={`absolute left-3 top-[4.25rem] z-[5] flex max-w-[calc(100%-4.5rem)] items-center gap-1.5 rounded-2xl border px-3 py-1.5 text-xs font-medium leading-snug shadow-md backdrop-blur-sm ${
+              dataSource === "error"
+                ? "border-red-200 bg-red-50/95 text-red-800"
+                : "border-amber-200 bg-amber-50/95 text-amber-900"
+            }`}
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${dataSource === "error" ? "bg-red-500" : "bg-amber-500"}`}
+            />
+            <span className="min-w-0">{SPOT_SOURCE_NOTICE[dataSource]}</span>
+            <span className="shrink-0 underline underline-offset-2">Add a sign</span>
+          </Link>
+        )}
+      </div>
 
       {/* ── Map canvas ──────────────────────────────────────────────────── */}
       <div ref={containerRef} className="h-full w-full" />
