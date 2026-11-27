@@ -157,6 +157,31 @@ describe("getGeminiClient", () => {
 // ─── parseSignResponse ────────────────────────────────────────────────────────
 
 describe("parseSignResponse", () => {
+  it.each([
+    { name: "a null rule", rule: null },
+    { name: "an empty rule", rule: {} },
+    { name: "an unknown rule type", patch: { rule_type: "free_parking" } },
+    { name: "an invalid weekday", patch: { days: [7] } },
+    { name: "an empty weekday list", patch: { days: [] } },
+    { name: "an invalid time window", patch: { time_window: { start: "26:00", end: "18:00" } } },
+    { name: "an invalid arrow", patch: { direction: "forward" } },
+    { name: "a negative cost", patch: { cost_per_hour: -5 } },
+  ])("rejects $name", ({ rule, patch }) => {
+    const extraction = JSON.parse(VALID_JSON);
+    extraction.rules = [patch ? { ...extraction.rules[0], ...patch } : rule];
+
+    expect(() => parseSignResponse(JSON.stringify(extraction))).toThrow(GeminiResponseError);
+  });
+
+  it("accepts an empty rule list for an unreadable sign", () => {
+    const data = parseSignResponse(JSON.stringify({
+      rules: [], raw_text: "", confidence: 0.1, time_limit_minutes: null, cost_per_hour: null, schedule: null,
+    }));
+
+    expect(data.parking_type).toBe("unknown");
+    expect(data.rules).toEqual([]);
+  });
+
   it("parses plain JSON and re-derives parking_type from the rules", () => {
     const data = parseSignResponse(VALID_JSON);
 

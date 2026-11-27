@@ -1,38 +1,53 @@
-import { Ratelimit } from "@upstash/ratelimit";
+import { Ratelimit, type Duration } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 // Lazily created so the module can be imported at build time even when the
 // Upstash env vars haven't been set yet (they're only needed at request time).
-let _minute: Ratelimit | null = null;
-let _day:    Ratelimit | null = null;
+let redis: Redis | null = null;
+const limiters = new Map<string, Ratelimit>();
 
-function makeRedis(): Redis {
-  return new Redis({
-    url:   process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  });
+function readCredentials(url?: string, token?: string) {
+  const restUrl = url?.trim();
+  const restToken = token?.trim();
+  return restUrl && restToken ? { url: restUrl, token: restToken } : null;
 }
 
-/** 10 requests per minute per IP */
-export function getRateLimitMinute(): Ratelimit {
-  if (!_minute) {
-    _minute = new Ratelimit({
-      redis:   makeRedis(),
-      limiter: Ratelimit.slidingWindow(10, "1 m"),
-      prefix:  "rl:analyse:min",
-    });
-  }
-  return _minute;
+function getRedisCredentials() {
+  return readCredentials(process.env.KV_REST_API_URL, process.env.KV_REST_API_TOKEN)
+    ?? readCredentials(process.env.UPSTASH_REDIS_REST_URL, process.env.UPSTASH_REDIS_REST_TOKEN);
 }
 
-/** 50 requests per day per IP */
-export function getRateLimitDay(): Ratelimit {
-  if (!_day) {
-    _day = new Ratelimit({
-      redis:   makeRedis(),
-      limiter: Ratelimit.slidingWindow(50, "1 d"),
-      prefix:  "rl:analyse:day",
-    });
+export function isRateLimitConfigured(): boolean {
+  return getRedisCredentials() !== null;
+}
+
+function getRedis(): Redis {
+  if (!redis) {
+    const credentials = getRedisCredentials();
+    if (!credentials) throw new Error("Upstash REST credentials are missing");
+
+    redis = new Redis(credentials);
   }
-  return _day;
+  return redis;
+}
+
+/**
+ * Returns a sliding-window limiter allowing `max` requests per `window`.
+ * Counters are stored under `rl:${name}`. Instances are cached per
+ * name + limit, so every caller of the same limiter shares one client.
+ */
+export function getLimiter(name: string, max: number, window: Duration): Ratelimit {
+  const cacheKey = `${name}|${max}|${window}`;
+  let limiter = limiters.get(cacheKey);
+
+  if (!limiter) {
+    limiter = new Ratelimit({
+      redis:   getRedis(),
+      limiter: Ratelimit.slidingWindow(max, window),
+      prefix:  `rl:${name}`,
+    });
+    limiters.set(cacheKey, limiter);
+  }
+
+  return limiter;
 }

@@ -1,19 +1,13 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
-import { deriveParkingType } from "./parking-rules";
-import type { ExtractedParkingData } from "./parking-rules";
+import { deriveParkingType, RULE_TYPE_LABEL } from "./parking-rules";
+import type { ExtractedParkingData, ParkingRule } from "./parking-rules";
 
 // ─── Gemini configuration ─────────────────────────────────────────────────────
 // The only place a model name appears. Every setting has a default and an env
 // override, so the model can be changed in Vercel without a code change when
 // Google retires or renames one.
 
-/**
- * A stable (non-preview) model. Flash-Lite is built for low-cost, low-latency
- * data extraction, which is what reading a parking sign is. It read all seven
- * sample signs in parkingsigns/ correctly; re-run gemini.live.test.ts before
- * changing it.
- */
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 /** Structured extraction needs little reasoning; low keeps latency and cost down. */
@@ -102,6 +96,37 @@ export class GeminiResponseError extends Error {
   }
 }
 
+const CLOCK_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isTimeLimit(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isSafeInteger(value) && value > 0);
+}
+
+function isCost(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+function isParkingRule(value: unknown): value is ParkingRule {
+  if (!isObject(value)) return false;
+
+  const { rule_type, is_prohibited, days, time_window, tow_away, direction } = value;
+  const validDays = days === null || (Array.isArray(days) && days.length > 0 &&
+    days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6));
+  const validWindow = time_window === null || (isObject(time_window) &&
+    typeof time_window.start === "string" && CLOCK_TIME.test(time_window.start) &&
+    typeof time_window.end === "string" && (CLOCK_TIME.test(time_window.end) || time_window.end === "24:00"));
+
+  return typeof rule_type === "string" && Object.hasOwn(RULE_TYPE_LABEL, rule_type) &&
+    typeof is_prohibited === "boolean" && typeof tow_away === "boolean" && validDays && validWindow &&
+    (direction === null || direction === "left" || direction === "right" || direction === "both") &&
+    isTimeLimit(value.time_limit_minutes) && isCost(value.cost_per_hour) &&
+    (value.permit_zone === null || typeof value.permit_zone === "string") && typeof value.raw_text === "string";
+}
+
 /** Parses the model's text into parking data. Throws GeminiResponseError if it cannot. */
 export function parseSignResponse(text: string): ExtractedParkingData {
   const raw = text.trim();
@@ -115,18 +140,17 @@ export function parseSignResponse(text: string): ExtractedParkingData {
     throw new GeminiResponseError(raw);
   }
 
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !Array.isArray((parsed as { rules?: unknown }).rules)
-  ) {
+  if (!isObject(parsed)) throw new GeminiResponseError(raw);
+
+  const { rules, raw_text, confidence, time_limit_minutes, cost_per_hour, schedule } = parsed;
+  if (!Array.isArray(rules) || !rules.every(isParkingRule) || typeof raw_text !== "string" ||
+    typeof confidence !== "number" || !(confidence >= 0 && confidence <= 1) ||
+    !isTimeLimit(time_limit_minutes) || !isCost(cost_per_hour) ||
+    (schedule !== null && typeof schedule !== "string")) {
     throw new GeminiResponseError(raw);
   }
 
-  const data = parsed as ExtractedParkingData;
-  // Re-derive parking_type from rules rather than trusting the model's summary
-  data.parking_type = deriveParkingType(data.rules);
-  return data;
+  return { rules, raw_text, confidence, parking_type: deriveParkingType(rules), time_limit_minutes, cost_per_hour, schedule };
 }
 
 /**

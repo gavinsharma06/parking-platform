@@ -1,58 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRateLimitMinute, getRateLimitDay } from "@/lib/ratelimit";
-import { fetchFewShotExamples, buildPrompt } from "@/lib/training-examples";
+import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
 import { extractParkingData, geminiErrorResponse, isGeminiConfigured } from "@/lib/gemini";
-
-// ─── Helper: get best-effort client IP ───────────────────────────────────────
-
-function getIP(req: NextRequest): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    req.headers.get("x-real-ip") ??
-    "unknown"
-  );
-}
+import { fetchFewShotExamples, buildPrompt } from "@/lib/training-examples";
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // ── Rate limiting ──────────────────────────────────────────────────────────
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    const ip = getIP(req);
-
-    const [minResult, dayResult] = await Promise.all([
-      getRateLimitMinute().limit(ip),
-      getRateLimitDay().limit(ip),
-    ]);
-
-    if (!minResult.success) {
-      return NextResponse.json(
-        { error: "Too many requests. Please wait a moment before trying again." },
-        {
-          status: 429,
-          headers: {
-            "Retry-After":           String(Math.ceil((minResult.reset - Date.now()) / 1000)),
-            "X-RateLimit-Limit":     "10",
-            "X-RateLimit-Remaining": String(minResult.remaining),
-          },
-        },
-      );
-    }
-
-    if (!dayResult.success) {
-      return NextResponse.json(
-        { error: "Daily limit reached. You can analyse up to 50 signs per day." },
-        {
-          status: 429,
-          headers: {
-            "Retry-After":           String(Math.ceil((dayResult.reset - Date.now()) / 1000)),
-            "X-RateLimit-Limit":     "50",
-            "X-RateLimit-Remaining": "0",
-          },
-        },
-      );
-    }
-  }
+  // ── Rate limiting (before the body is read or any AI call is made) ─────────
+  const limited = await enforceAiRateLimit(req, "analyse");
+  if (limited) return limited;
 
   // ── Gemini API key check ───────────────────────────────────────────────────
   if (!isGeminiConfigured()) {
@@ -63,25 +19,14 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Kick off few-shot fetch before awaiting the request body ───────────────
-  // Supabase roundtrip (~50–150 ms) runs concurrently with JSON.parse so it
+  // Supabase roundtrip (~50–150 ms) runs concurrently with body parsing so it
   // adds no wall-clock latency in the common case.
   const examplesPromise = fetchFewShotExamples(5);
 
-  // ── Parse request body ─────────────────────────────────────────────────────
-  let imageBase64: string;
-  try {
-    const body = await req.json();
-    imageBase64 = body.image;
-    if (!imageBase64) throw new Error("missing image field");
-  } catch {
-    return NextResponse.json(
-      { error: "Body must be JSON with an `image` field (base64 JPEG)." },
-      { status: 400 },
-    );
-  }
-
-  // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
-  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  // ── Parse request body (size-capped; data URI prefix stripped) ─────────────
+  const payload = await readImageRequest(req);
+  if (!payload.ok) return payload.response;
+  const base64Data = payload.imageBase64;
 
   // ── Build prompt with few-shot examples ────────────────────────────────────
   // Await here — almost certainly already resolved given body parsing above.
@@ -89,7 +34,6 @@ export async function POST(req: NextRequest) {
   const examples = await examplesPromise;
   const prompt = buildPrompt(examples);
 
-  // ── Call Gemini (model, thinking level and timeout come from src/lib/gemini) ─
   try {
     return NextResponse.json(await extractParkingData(base64Data, prompt));
   } catch (err) {

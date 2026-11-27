@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadSignSubmission } from "@/lib/submissions";
 import { RULE_TYPE_COLOR, RULE_TYPE_LABEL, formatTimeWindow, formatDays } from "@/lib/parking-rules";
 import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
+import { captureVideoFrame, CAPTURE_JPEG_QUALITY, CAPTURE_MIME_TYPE } from "@/lib/capture";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,16 +96,15 @@ export default function SignCapture() {
     const video = videoRef.current;
     if (!video) return;
 
-    const canvas = document.createElement("canvas");
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    const canvas = captureVideoFrame(video);
     stopStream();
 
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+    const blob = await new Promise<Blob | null>((res) =>
+      canvas.toBlob(res, CAPTURE_MIME_TYPE, CAPTURE_JPEG_QUALITY),
+    );
     if (!blob) { setError("Failed to capture photo. Please try again."); setStatus("idle"); return; }
 
-    const base64     = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+    const base64     = canvas.toDataURL(CAPTURE_MIME_TYPE, CAPTURE_JPEG_QUALITY).split(",")[1];
     const previewUrl = URL.createObjectURL(blob);
 
     setPhoto({ blob, previewUrl, base64 });
