@@ -7,6 +7,7 @@ const fake = vi.hoisted(() => ({
   counts: new Map<string, number>(),
   calls: [] as { name: string; max: number; identifier: string }[],
   throwOnLimit: false,
+  timeOut: false,
 }));
 
 vi.mock("../ratelimit", () => ({
@@ -14,6 +15,9 @@ vi.mock("../ratelimit", () => ({
   getLimiter: (name: string, max: number) => ({
     limit: async (identifier: string) => {
       if (fake.throwOnLimit) throw new Error("fetch failed");
+      if (fake.timeOut) {
+        return { success: true, limit: 0, remaining: 0, reset: 0, reason: "timeout" };
+      }
 
       fake.calls.push({ name, max, identifier });
       const key = `${name}|${identifier}`;
@@ -44,6 +48,7 @@ beforeEach(() => {
   fake.counts.clear();
   fake.calls.length = 0;
   fake.throwOnLimit = false;
+  fake.timeOut = false;
 });
 
 afterEach(() => {
@@ -121,6 +126,16 @@ describe("enforceAiRateLimit", () => {
   it("fails closed with 503 in production when the limiter cannot be reached", async () => {
     process.env.VERCEL_ENV = "production";
     fake.throwOnLimit = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await enforceAiRateLimit(request("203.0.113.7"), "can-i-park");
+
+    expect(response?.status).toBe(503);
+  });
+
+  it("returns 503 in production when Upstash reports a timeout as success", async () => {
+    process.env.VERCEL_ENV = "production";
+    fake.timeOut = true;
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     const response = await enforceAiRateLimit(request("203.0.113.7"), "can-i-park");

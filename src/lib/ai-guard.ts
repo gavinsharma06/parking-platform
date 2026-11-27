@@ -61,6 +61,12 @@ export async function enforceAiRateLimit(
       const limiter = getLimiter(`${route}:${tier.tier}:${window.name}`, window.max, window.window);
       const result = await limiter.limit(tier.identifier);
 
+      if (result.reason === "timeout") {
+        console.error("[rate-limit] Upstash timed out:", route, window.name);
+        if (isProductionDeployment()) return rateLimitUnavailable();
+        continue;
+      }
+
       if (!result.success) {
         const retryAfterSeconds = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000));
         const error =
