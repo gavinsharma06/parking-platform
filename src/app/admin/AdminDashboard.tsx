@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useAdminUser } from "@/lib/use-admin-user";
 import Image from "next/image";
 import { ruleLabel, RULE_TYPE_COLOR, RULE_TYPE_LABEL } from "@/lib/parking-rules";
 import type { ExtractedParkingData, ParkingRule } from "@/lib/parking-rules";
@@ -65,21 +66,32 @@ function SubmissionsTab() {
   const [acting,   setActing]   = useState<string | null>(null);
   const [error,    setError]    = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/submissions");
-      if (!res.ok) throw new Error(await res.text());
-      setSubmissions(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load submissions");
-    } finally {
-      setLoading(false);
-    }
+  const load = useCallback((signal?: AbortSignal) => {
+    return fetch("/api/admin/submissions", { signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (!signal?.aborted) setSubmissions(data);
+      })
+      .catch((e: unknown) => {
+        if (!signal?.aborted) setError(e instanceof Error ? e.message : "Failed to load submissions");
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function reload() {
+    setLoading(true);
+    setError(null);
+    await load();
+  }
 
   async function act(id: string, action: "approve" | "reject") {
     setActing(id);
@@ -97,7 +109,7 @@ function SubmissionsTab() {
       if (result.merged) {
         alert(`Approved and merged into existing nearby spot (${result.parking_spot_id})`);
       }
-      await load();
+      await reload();
       setExpanded(null);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Action failed");
@@ -132,7 +144,7 @@ function SubmissionsTab() {
             <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-xs">{counts[f]}</span>
           </button>
         ))}
-        <button onClick={load} className="ml-auto rounded-full border border-gray-200 px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-50">
+        <button onClick={reload} className="ml-auto rounded-full border border-gray-200 px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-50">
           Refresh
         </button>
       </div>
@@ -502,21 +514,32 @@ function SpotsTab() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [error, setError]           = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/spots");
-      if (!res.ok) throw new Error(await res.text());
-      setSpots(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load spots");
-    } finally {
-      setLoading(false);
-    }
+  const load = useCallback((signal?: AbortSignal) => {
+    return fetch("/api/admin/spots", { signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (!signal?.aborted) setSpots(data);
+      })
+      .catch((e: unknown) => {
+        if (!signal?.aborted) setError(e instanceof Error ? e.message : "Failed to load spots");
+      })
+      .finally(() => {
+        if (!signal?.aborted) setLoading(false);
+      });
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function reload() {
+    setLoading(true);
+    setError(null);
+    await load();
+  }
 
   const filtered = spots.filter((s) => {
     const matchType   = typeFilter === "all" || s.parking_type === typeFilter;
@@ -550,7 +573,7 @@ function SpotsTab() {
             </button>
           ))}
         </div>
-        <button onClick={load} className="rounded-full border border-gray-200 px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-50 flex-shrink-0">Refresh</button>
+        <button onClick={reload} className="rounded-full border border-gray-200 px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-50 flex-shrink-0">Refresh</button>
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -565,7 +588,7 @@ function SpotsTab() {
             <SpotRow
               key={spot.id}
               spot={spot}
-              onSaved={load}
+              onSaved={reload}
               onDeleted={() => setSpots((prev) => prev.filter((s) => s.id !== spot.id))}
             />
           ))}
@@ -579,12 +602,7 @@ function SpotsTab() {
 
 export default function AdminDashboard() {
   const [tab, setTab]           = useState<"submissions" | "spots">("submissions");
-  const [adminUser, setAdminUser] = useState("");
-
-  useEffect(() => {
-    const match = document.cookie.match(/admin_user=([^;]+)/);
-    if (match) setAdminUser(match[1]);
-  }, []);
+  const adminUser = useAdminUser();
 
   async function handleLogout() {
     await fetch("/api/admin/auth", { method: "DELETE" });

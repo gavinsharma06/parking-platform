@@ -386,7 +386,6 @@ export default function ParkingMap() {
 
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; mapReady.current = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Sync spots → map source ───────────────────────────────────────────────
@@ -403,7 +402,6 @@ export default function ParkingMap() {
     } else {
       addLayers(map, spotsToGeoJSON(spots));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spots]);
 
   // ── Geocoding search ─────────────────────────────────────────────────────

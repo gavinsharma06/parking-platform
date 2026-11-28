@@ -43,7 +43,7 @@ export default function Home() {
       <section className="px-5 py-14">
         <div className="mx-auto max-w-md rounded-2xl border border-indigo-100 bg-indigo-50 p-8 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-2xl">📷</div>
-          <h2 className="mt-5 text-lg font-bold text-gray-900">Know a parking spot we're missing?</h2>
+          <h2 className="mt-5 text-lg font-bold text-gray-900">Know a parking spot we&apos;re missing?</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
             Photograph a parking sign - our OCR reads the rules automatically. No account needed.
           </p>
