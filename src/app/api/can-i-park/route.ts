@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
 import { createServiceRoleClient } from "@/lib/supabase-server";
-import { deriveParkingType } from "@/lib/parking-rules";
+import { extractParkingData, geminiErrorResponse, isGeminiConfigured } from "@/lib/gemini";
 import { generateAnswer } from "@/lib/parking-answer";
 import { isHalifaxLocation } from "@/lib/validation";
 import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
@@ -55,8 +54,7 @@ export async function POST(req: NextRequest) {
   const limited = await enforceAiRateLimit(req, "can-i-park");
   if (limited) return limited;
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!isGeminiConfigured()) {
     return NextResponse.json({ error: "GEMINI_API_KEY is not set." }, { status: 503 });
   }
 
@@ -69,32 +67,13 @@ export async function POST(req: NextRequest) {
   const latitude  = typeof lat === "number" && Number.isFinite(lat) ? lat : null;
   const longitude = typeof lng === "number" && Number.isFinite(lng) ? lng : null;
 
-  // ── Gemini Vision ──────────────────────────────────────────────────────────
-  const ai = new GoogleGenAI({ apiKey });
-  let rawJson: string;
-  try {
-    const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-        { text: PROMPT },
-      ],
-    });
-    rawJson = (result.text ?? "").trim();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Gemini error: ${msg}` }, { status: 502 });
-  }
-
   let parsed: ExtractedParkingData;
   try {
-    const clean = rawJson.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    parsed = JSON.parse(clean) as ExtractedParkingData;
-  } catch {
-    return NextResponse.json({ error: "Gemini returned unparseable JSON", raw: rawJson }, { status: 500 });
+    parsed = await extractParkingData(base64Data, PROMPT);
+  } catch (err) {
+    const { status, body } = geminiErrorResponse(err);
+    return NextResponse.json(body, { status });
   }
-
-  parsed.parking_type = deriveParkingType(parsed.rules);
 
   // ── Plain-language answer ──────────────────────────────────────────────────
   const { answer, can_park } = generateAnswer(parsed.rules, new Date());

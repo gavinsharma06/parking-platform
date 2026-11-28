@@ -67,10 +67,20 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
 | `CRON_SECRET` | Production | Random string of 32+ characters. Protects `/api/health` |
 | `NEXT_PUBLIC_PARKING_TIME_ZONE` | No | IANA timezone the parking rules are evaluated in. Defaults to `America/Halifax` |
+| `GEMINI_API_KEY` | Yes | Server-side key for reading sign photos |
+| `GEMINI_MODEL` | No | Defaults to `gemini-3.5-flash-lite` |
+| `GEMINI_THINKING_LEVEL` | No | `minimal`, `low`, `medium` or `high`. Defaults to `low` |
+| `GEMINI_TIMEOUT_MS` | No | Timeout per Gemini request, in milliseconds. Defaults to `30000` |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | One pair in production | Preferred Upstash REST credentials provisioned by the Vercel integration |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | One pair in production | Alternative Upstash REST credentials for local development or other hosts |
 
-Parking rules are always evaluated in this timezone, on the server and in the browser, so the answer does not depend on where the server runs or where the visitor is.
+Parking rules are evaluated in `NEXT_PUBLIC_PARKING_TIME_ZONE` on the server and in the browser.
+
+Set `GEMINI_MODEL` to try a different model. The live test checks sample signs in `parkingsigns/` with one billable API call per JPEG.
+
+```bash
+GEMINI_LIVE_TEST=1 GEMINI_API_KEY=your_key GEMINI_MODEL=new-model npm test -- gemini.live
+```
 
 ### AI endpoint limits
 
