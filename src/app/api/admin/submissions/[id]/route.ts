@@ -1,12 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
-import { deriveParkingType, haversineMetres } from "@/lib/parking-rules";
-import type { ParkingRule, SpotSchedule, ExtractedParkingData } from "@/lib/parking-rules";
+import type { ExtractedParkingData } from "@/lib/parking-rules";
 
-const MERGE_RADIUS_METRES = 15;
+type Approval = {
+  status: "approved";
+  parking_spot_id: string;
+  merged: boolean;
+  image_path: string;
+  extracted_data: ExtractedParkingData | null;
+};
 
-// ─── Handler ──────────────────────────────────────────────────────────────────
+type Review = Approval | { status: "rejected" };
+
+async function recordTrainingExample(supabase: SupabaseClient, id: string, approval: Approval) {
+  const extracted = approval.extracted_data;
+  if (typeof extracted?.raw_text !== "string" || !extracted.raw_text.trim() ||
+    !Array.isArray(extracted.rules) || extracted.rules.length === 0) return;
+
+  const { error } = await supabase.from("training_examples").insert({
+    submission_id: id,
+    image_path: approval.image_path,
+    raw_text: extracted.raw_text,
+    approved_extracted_data: extracted,
+  });
+
+  if (error) console.error(`[admin/submissions] Could not save training example for ${id}`, error.code);
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -15,128 +36,38 @@ export async function PATCH(
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
+  let body: { action?: unknown; reviewer_notes?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Body must be JSON" }, { status: 400 });
+  }
+
+  const action = body?.action;
+  if (action !== "approve" && action !== "reject") {
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+
   const { id } = await params;
+  const notes = typeof body.reviewer_notes === "string" ? body.reviewer_notes.trim() || null : null;
   const supabase = createServiceRoleClient();
-  const body = await request.json();
-  const { action, reviewer_notes } = body as {
-    action: "approve" | "reject";
-    reviewer_notes?: string;
-  };
+  const { data, error } = await supabase.rpc("review_sign_submission", {
+    p_submission_id: id,
+    p_action: action,
+    p_reviewer_notes: notes,
+  });
 
-  // ── Reject ─────────────────────────────────────────────────────────────────
-
-  if (action === "reject") {
-    const { error } = await supabase
-      .from("sign_submissions")
-      .update({ status: "rejected", reviewer_notes: reviewer_notes ?? null })
-      .eq("id", id);
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
+  if (error) {
+    console.error(`[admin/submissions] Could not review ${id}`, error.code);
+    return NextResponse.json({ error: "Could not review this submission." }, { status: 500 });
   }
 
-  // ── Approve ────────────────────────────────────────────────────────────────
-
-  if (action === "approve") {
-    const { data: sub, error: fetchError } = await supabase
-      .from("sign_submissions")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-
-    const extracted = sub.extracted_data as ExtractedParkingData | null;
-    const newRules: ParkingRule[] = extracted?.rules ?? [];
-    const parking_type = extracted?.parking_type ?? deriveParkingType(newRules);
-
-    // Check for an existing parking spot within MERGE_RADIUS_METRES
-    const latDelta = MERGE_RADIUS_METRES / 111_320;
-    const lngDelta = MERGE_RADIUS_METRES / (111_320 * Math.cos((sub.latitude * Math.PI) / 180));
-
-    const { data: nearby } = await supabase
-      .from("parking_spots")
-      .select("id, latitude, longitude, schedule")
-      .gte("latitude",  sub.latitude  - latDelta)
-      .lte("latitude",  sub.latitude  + latDelta)
-      .gte("longitude", sub.longitude - lngDelta)
-      .lte("longitude", sub.longitude + lngDelta)
-      .eq("is_active", true);
-
-    const closest = (nearby ?? [])
-      .map((s) => ({
-        ...s,
-        dist: haversineMetres(sub.latitude, sub.longitude, s.latitude, s.longitude),
-      }))
-      .filter((s) => s.dist <= MERGE_RADIUS_METRES)
-      .sort((a, b) => a.dist - b.dist)[0];
-
-    let spotId: string;
-
-    if (closest) {
-      // ── Merge rules into existing spot ──────────────────────────────────────
-      const existing = (closest.schedule as SpotSchedule | null)?.rules ?? [];
-      const merged: ParkingRule[] = [...existing, ...newRules];
-
-      const { error: updateErr } = await supabase
-        .from("parking_spots")
-        .update({
-          schedule:          { rules: merged },
-          parking_type:      deriveParkingType(merged),
-          confidence_score:  Math.min((extracted?.confidence ?? 0.7), 1),
-        })
-        .eq("id", closest.id);
-
-      if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      spotId = closest.id;
-    } else {
-      // ── Create new parking spot ──────────────────────────────────────────────
-      const { data: spot, error: insertErr } = await supabase
-        .from("parking_spots")
-        .insert({
-          latitude:          sub.latitude,
-          longitude:         sub.longitude,
-          parking_type,
-          time_limit_minutes: extracted?.time_limit_minutes ?? null,
-          cost_per_hour:      extracted?.cost_per_hour      ?? null,
-          schedule:           { rules: newRules },
-          source_type:        "user",
-          confidence_score:   extracted?.confidence ?? 0.7,
-          notes:              reviewer_notes ?? null,
-        })
-        .select("id")
-        .single();
-
-      if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
-      spotId = spot.id;
-    }
-
-    // Update submission status
-    const { error: updateErr } = await supabase
-      .from("sign_submissions")
-      .update({
-        status:          "approved",
-        parking_spot_id: spotId,
-        reviewer_notes:  reviewer_notes ?? null,
-      })
-      .eq("id", id);
-
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-
-    // ── Write to training_examples (non-fatal) ────────────────────────────────
-    await supabase.from("training_examples").insert({
-      submission_id:           id,
-      image_path:              sub.image_path,
-      raw_text:                extracted?.raw_text ?? null,
-      approved_extracted_data: extracted ?? null,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      parking_spot_id: spotId,
-      merged: !!closest,
-    });
+  const review = data as Review | null;
+  if (!review) {
+    return NextResponse.json({ error: "This submission has already been reviewed or does not exist." }, { status: 409 });
   }
+  if (review.status === "rejected") return NextResponse.json({ ok: true });
 
-  return NextResponse.json({ error: "invalid action" }, { status: 400 });
+  await recordTrainingExample(supabase, id, review);
+  return NextResponse.json({ ok: true, parking_spot_id: review.parking_spot_id, merged: review.merged });
 }
