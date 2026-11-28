@@ -1,15 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useAdminUser } from "@/lib/use-admin-user";
 
 export default function Navbar() {
-  const [adminUser, setAdminUser] = useState("");
-
-  useEffect(() => {
-    const match = document.cookie.match(/admin_user=([^;]+)/);
-    if (match) setAdminUser(match[1]);
-  }, []);
+  const adminUser = useAdminUser();
 
   return (
     <header className="sticky top-0 z-30 border-b border-gray-100 bg-white/95 backdrop-blur-sm">
@@ -20,7 +15,7 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <nav className="hidden items-center gap-6 text-sm font-medium text-gray-600 sm:flex">
-          <a href="/#how-it-works" className="transition-colors hover:text-indigo-600">How it works</a>
+          <Link href="/#how-it-works" className="transition-colors hover:text-indigo-600">How it works</Link>
           <Link
             href="/admin"
             className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100"

@@ -4,8 +4,6 @@ import type { ParkingRule } from "../parking-rules";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const ALWAYS: Pick<ParkingRule, "days" | "time_window"> = { days: null, time_window: null };
-
 function rule(overrides: Partial<ParkingRule>): ParkingRule {
   return {
     rule_type: "free",
