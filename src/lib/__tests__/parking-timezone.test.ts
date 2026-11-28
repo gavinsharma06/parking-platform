@@ -76,7 +76,7 @@ describe("localClock", () => {
 
 // ─── evaluateSpot in Halifax time ─────────────────────────────────────────────
 
-describe("evaluateSpot — Halifax time", () => {
+describe("evaluateSpot - Halifax time", () => {
   it("meter is enforced at 5PM Halifax in summer", () => {
     expect(evaluateSpot(HALIFAX_DEFAULT_PAID_RULES, SUMMER_WED_5PM).status).toBe("paid");
   });
@@ -117,7 +117,7 @@ describe("evaluateSpot — Halifax time", () => {
 
 // ─── generateAnswer ───────────────────────────────────────────────────────────
 
-describe("generateAnswer — Halifax time", () => {
+describe("generateAnswer - Halifax time", () => {
   const meter = rule({
     rule_type: "paid",
     days: [1, 2, 3, 4, 5],
@@ -129,14 +129,14 @@ describe("generateAnswer — Halifax time", () => {
     const result = generateAnswer([meter], SUMMER_WED_5PM);
 
     expect(result.can_park).toBe(true);
-    expect(result.answer).toBe("Yes — paid parking, 2h maximum. Meters enforced until 6PM.");
+    expect(result.answer).toBe("Yes. Paid parking, 2h maximum. Meters enforced until 6PM.");
   });
 
   it("says free at 7PM Halifax", () => {
     const result = generateAnswer([meter], SUMMER_WED_7PM);
 
     expect(result.can_park).toBe(true);
-    expect(result.answer).toContain("free");
+    expect(result.answer).toContain("Free parking");
   });
 
   it("says no during a timed restriction and when it lifts", () => {
@@ -150,7 +150,7 @@ describe("generateAnswer — Halifax time", () => {
     const result = generateAnswer([rushHour], SUMMER_WED_5PM);
 
     expect(result.can_park).toBe(false);
-    expect(result.answer).toBe("No — no parking right now. Restriction lifts at 6PM.");
+    expect(result.answer).toBe("No. No parking right now. Restriction lifts at 6PM.");
   });
 
   it("warns about a restriction that starts later the same Halifax day", () => {
@@ -163,7 +163,7 @@ describe("generateAnswer — Halifax time", () => {
     const result = generateAnswer([evening], SUMMER_WED_5PM);
 
     expect(result.can_park).toBe(true);
-    expect(result.answer).toBe("Yes — free to park here. Restrictions begin at 6PM.");
+    expect(result.answer).toBe("Yes. Free to park here. Restrictions begin at 6PM.");
   });
 
   it("returns can_park null when there are no rules", () => {

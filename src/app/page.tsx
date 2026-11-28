@@ -17,7 +17,7 @@ export default function Home() {
       <section className="relative" style={{ height: "calc(100dvh - 60px)" }}>
         <ParkingMap />
 
-        {/* Scroll hint — only visible on larger screens where content exists below */}
+        {/* Scroll hint - only visible on larger screens where content exists below */}
         <div className="pointer-events-none absolute bottom-4 right-4 z-10 hidden rounded-full bg-white/80 px-3 py-1.5 text-xs text-gray-500 shadow-sm backdrop-blur-sm sm:block">
           Scroll for more ↓
         </div>
@@ -45,7 +45,7 @@ export default function Home() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-2xl">📷</div>
           <h2 className="mt-5 text-lg font-bold text-gray-900">Know a parking spot we're missing?</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
-            Photograph a parking sign — our OCR reads the rules automatically. No account needed.
+            Photograph a parking sign - our OCR reads the rules automatically. No account needed.
           </p>
           <Link
             href="/submit"

@@ -1,4 +1,4 @@
-// ─── Halifax bounding box (generous — covers HRM municipality) ────────────────
+// ─── Halifax bounding box (generous - covers HRM municipality) ────────────────
 // Tight downtown: lat 44.63–44.68, lng -63.62–-63.55
 // Full HRM:       lat 44.30–45.20, lng -64.50–-62.80
 
@@ -18,7 +18,7 @@ export function isHalifaxLocation(lat: number, lng: number): boolean {
   );
 }
 
-// ─── Proximity dedup — matches import script logic ────────────────────────────
+// ─── Proximity dedup - matches import script logic ────────────────────────────
 // Returns distance in metres between two lat/lng points (Haversine)
 
 export function distanceMetres(

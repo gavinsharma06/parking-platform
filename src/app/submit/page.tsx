@@ -2,7 +2,7 @@ import Navbar from "@/components/layout/Navbar";
 import SignCapture from "@/components/capture/SignCapture";
 
 export const metadata = {
-  title: "Submit a Sign — Park Off",
+  title: "Submit a Sign - Park Off",
   description: "Help Halifax drivers by photographing a parking sign near you.",
 };
 

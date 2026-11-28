@@ -1,6 +1,8 @@
 import { createServiceRoleClient } from "./supabase-server";
 import type { ExtractedParkingData } from "./parking-rules";
 
+const EXAMPLE_LOOKUP_TIMEOUT_MS = 1_500;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TrainingExample {
@@ -17,7 +19,7 @@ export interface TrainingExample {
  *   - Supabase env vars are absent (local dev without DB config)
  *   - The query fails for any reason
  *
- * Callers must never hard-fail when few-shot examples are unavailable — the
+ * Callers must never hard-fail when few-shot examples are unavailable - the
  * route still works fine with the base prompt.
  */
 export async function fetchFewShotExamples(limit = 5): Promise<TrainingExample[]> {
@@ -31,7 +33,8 @@ export async function fetchFewShotExamples(limit = 5): Promise<TrainingExample[]
       .from("training_examples")
       .select("raw_text, approved_extracted_data")
       .order("approved_at", { ascending: false })
-      .limit(limit);
+      .limit(limit)
+      .abortSignal(AbortSignal.timeout(EXAMPLE_LOOKUP_TIMEOUT_MS));
 
     if (error || !data) return [];
 
@@ -96,7 +99,7 @@ Rules:
 /**
  * Formats approved training examples into an XML-tagged few-shot block.
  *
- * Returns an empty string when examples is empty — callers can safely
+ * Returns an empty string when examples is empty - callers can safely
  * concatenate without an unwanted blank section appearing in the prompt.
  *
  * Each shot contains:

@@ -26,9 +26,9 @@ function rule(overrides: Partial<ParkingRule>): ParkingRule {
 // same instant no matter which timezone the tests run in.
 const NOW = new Date("2026-05-16T14:00:00-03:00");
 
-// ─── evaluateSpot — basic status priority ─────────────────────────────────────
+// ─── evaluateSpot - basic status priority ─────────────────────────────────────
 
-describe("evaluateSpot — basic status", () => {
+describe("evaluateSpot - basic status", () => {
   it("returns unknown for empty rules", () => {
     expect(evaluateSpot([], NOW).status).toBe("unknown");
   });
@@ -58,9 +58,9 @@ describe("evaluateSpot — basic status", () => {
   });
 });
 
-// ─── evaluateSpot — accessible + no_parking conflict (bug fix) ───────────────
+// ─── evaluateSpot - accessible + no_parking conflict (bug fix) ───────────────
 
-describe("evaluateSpot — accessible vs no_parking (bug #2)", () => {
+describe("evaluateSpot - accessible vs no_parking (bug #2)", () => {
   it("returns accessible when no_parking + accessible rules coexist", () => {
     // Gemini extracts accessible spots as: no_parking (is_prohibited:true) for
     // general public + accessible (is_prohibited:false) for permit holders.
@@ -87,9 +87,9 @@ describe("evaluateSpot — accessible vs no_parking (bug #2)", () => {
   });
 });
 
-// ─── evaluateSpot — time-based rules ─────────────────────────────────────────
+// ─── evaluateSpot - time-based rules ─────────────────────────────────────────
 
-describe("evaluateSpot — time-based rules", () => {
+describe("evaluateSpot - time-based rules", () => {
   it("treats an inactive time-limited rule as implicitly free", () => {
     // No parking 8AM–9AM Mon–Fri; right now it's Saturday 2PM → free
     const rules = [rule({
@@ -122,9 +122,9 @@ describe("evaluateSpot — time-based rules", () => {
   });
 });
 
-// ─── evaluateSpot — status priority order ────────────────────────────────────
+// ─── evaluateSpot - status priority order ────────────────────────────────────
 
-describe("evaluateSpot — priority order", () => {
+describe("evaluateSpot - priority order", () => {
   it("no_stopping beats no_parking", () => {
     const rules = [
       rule({ rule_type: "no_parking",  is_prohibited: true }),

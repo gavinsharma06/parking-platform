@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
--- Park Off — Complete Database Schema
+-- Park Off - Complete Database Schema
 -- Run in Supabase: Dashboard → SQL Editor → New query → Run
 -- ═══════════════════════════════════════════════════════════════════════════════
 
@@ -76,7 +76,7 @@ CREATE UNIQUE INDEX parking_spots_source_external_idx ON parking_spots (source_t
 
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- parking_spot_history  (audit log — automatic, never written by app code)
+-- parking_spot_history  (audit log - automatic, never written by app code)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE parking_spot_history (
@@ -129,7 +129,7 @@ CREATE INDEX reports_status_idx ON reports (status, created_at DESC);
 
 
 -- ═══════════════════════════════════════════════════════════════════════════════
--- sign_submissions  (user photo evidence — reviewed before going live)
+-- sign_submissions  (user photo evidence - reviewed before going live)
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE sign_submissions (

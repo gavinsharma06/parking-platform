@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const base64Data = payload.imageBase64;
 
   // ── Build prompt with few-shot examples ────────────────────────────────────
-  // Await here — almost certainly already resolved given body parsing above.
+  // Await here - almost certainly already resolved given body parsing above.
   // fetchFewShotExamples never throws, so no try/catch needed.
   const examples = await examplesPromise;
   const prompt = buildPrompt(examples);

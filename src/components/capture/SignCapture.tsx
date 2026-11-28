@@ -141,7 +141,7 @@ export default function SignCapture() {
     openCamera();
   }, [photo, openCamera]);
 
-  // ── Step 4: submit — analyses then uploads in one action ──────────────────
+  // ── Step 4: submit - analyses then uploads in one action ──────────────────
 
   const submit = useCallback(async () => {
     if (!photo || !location) return;
@@ -154,7 +154,7 @@ export default function SignCapture() {
       analysedData = await fetchAnalysis(photo.base64);
       setExtracted(analysedData);
     } catch {
-      // Analysis failed — proceed without OCR data
+      // Analysis failed - proceed without OCR data
     }
 
     // Upload
@@ -170,7 +170,7 @@ export default function SignCapture() {
       URL.revokeObjectURL(photo.previewUrl);
       setPhoto(null);
       setLocation(null);
-      // Keep `extracted` — success screen shows it
+      // Keep `extracted` - success screen shows it
       setStatus("success");
     } catch {
       setStatus("ready");
@@ -215,7 +215,7 @@ export default function SignCapture() {
                 <div>
                   <p className="text-sm font-semibold text-gray-800">
                     {RULE_TYPE_LABEL[rule.rule_type]}
-                    {rule.tow_away && " — Tow away zone"}
+                    {rule.tow_away && " - Tow away zone"}
                   </p>
                   <p className="text-xs text-gray-500">
                     {[
@@ -295,7 +295,7 @@ export default function SignCapture() {
       {/* ── Location confirmation ──────────────────────────────────────────── */}
       {status === "ready" && location && (
         <p className="text-center text-xs text-green-700">
-          Location captured — {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+          Location captured - {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
         </p>
       )}
 

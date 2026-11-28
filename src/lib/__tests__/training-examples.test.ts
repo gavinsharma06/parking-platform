@@ -1,11 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildFewShotBlock,
   buildPrompt,
   BASE_PROMPT,
+  fetchFewShotExamples,
   type TrainingExample,
 } from "../training-examples";
 import type { ExtractedParkingData } from "../parking-rules";
+
+it("falls back when the optional database request exceeds its deadline", async () => {
+  const controller = new AbortController();
+  const deadline = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+    expect(init?.signal).toBe(controller.signal);
+    controller.abort();
+    throw controller.signal.reason;
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://parkoff.example.test");
+  vi.stubEnv("SUPABASE_SECRET_KEY", "local-test-placeholder");
+
+  try {
+    expect(await fetchFewShotExamples()).toEqual([]);
+    expect(deadline).toHaveBeenCalledWith(1_500);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  } finally {
+    deadline.mockRestore();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  }
+});
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
