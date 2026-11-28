@@ -67,8 +67,27 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Yes | Mapbox public token. Must start with `pk.` |
 | `CRON_SECRET` | Production | Random string of 32+ characters. Protects `/api/health` |
 | `NEXT_PUBLIC_PARKING_TIME_ZONE` | No | IANA timezone the parking rules are evaluated in. Defaults to `America/Halifax` |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | One pair in production | Preferred Upstash REST credentials provisioned by the Vercel integration |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | One pair in production | Alternative Upstash REST credentials for local development or other hosts |
 
 Parking rules are always evaluated in this timezone, on the server and in the browser, so the answer does not depend on where the server runs or where the visitor is.
+
+### AI endpoint limits
+
+`/api/analyse-sign` and `/api/can-i-park` use Upstash for rate limiting and reject oversized images before any AI call. The app uses the Vercel pair when both values are set. If either value is missing, it checks for the complete `UPSTASH_REDIS_REST_*` pair. Use a token with write access because rate limiting updates Redis counters. The app ignores `KV_REST_API_READ_ONLY_TOKEN`.
+
+In production, missing or invalid credentials and Redis connection failures return `503`. Local development and Vercel previews allow requests and log the configuration or connection problem when the limiter is unavailable.
+
+Every limit has a default and can be overridden per environment:
+
+| Variable | Default | Description |
+|---|---|---|
+| `AI_RATE_LIMIT_PER_MINUTE` | `10` | Requests per minute per IP, per route |
+| `AI_RATE_LIMIT_PER_DAY` | `50` | Requests per day per IP, per route |
+| `AI_ADMIN_RATE_LIMIT_PER_MINUTE` | `60` | Requests per minute for a logged-in admin |
+| `AI_ADMIN_RATE_LIMIT_PER_DAY` | `500` | Requests per day for a logged-in admin |
+| `AI_MAX_BODY_BYTES` | `4194304` | Largest request body accepted (4 MB) |
+| `AI_MAX_IMAGE_BYTES` | `3145728` | Largest decoded image accepted (3 MB) |
 
 When you add a new variable: add a placeholder line to `.env.example` and update this table. That way the next person to clone the repo knows exactly what they need.
 
