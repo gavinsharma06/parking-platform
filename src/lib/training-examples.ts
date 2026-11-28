@@ -1,6 +1,8 @@
 import { createServiceRoleClient } from "./supabase-server";
 import type { ExtractedParkingData } from "./parking-rules";
 
+const EXAMPLE_LOOKUP_TIMEOUT_MS = 1_500;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TrainingExample {
@@ -31,7 +33,8 @@ export async function fetchFewShotExamples(limit = 5): Promise<TrainingExample[]
       .from("training_examples")
       .select("raw_text, approved_extracted_data")
       .order("approved_at", { ascending: false })
-      .limit(limit);
+      .limit(limit)
+      .abortSignal(AbortSignal.timeout(EXAMPLE_LOOKUP_TIMEOUT_MS));
 
     if (error || !data) return [];
 

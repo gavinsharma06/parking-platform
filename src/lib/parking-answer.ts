@@ -46,7 +46,7 @@ export function generateAnswer(rules: ParkingRule[], now: Date = new Date()): Pa
 
   switch (status.status) {
     case "no_stopping":
-      return { answer: "No. tow-away zone in effect. Do not stop here.", can_park: false };
+      return { answer: "No. Tow-away zone in effect. Do not stop here.", can_park: false };
 
     case "no_parking": {
       // If ALL active prohibited rules are directional (left/right only, not both/null),
@@ -72,34 +72,34 @@ export function generateAnswer(rules: ParkingRule[], now: Date = new Date()): Pa
       const active = status.activeRules.find((r) => r.is_prohibited && r.time_window);
       if (active?.time_window) {
         return {
-          answer: `No. no parking right now. Restriction lifts at ${formatTime(active.time_window.end)}.`,
+          answer: `No. No parking right now. Restriction lifts at ${formatTime(active.time_window.end)}.`,
           can_park: false,
         };
       }
-      return { answer: "No. no parking allowed here.", can_park: false };
+      return { answer: "No. No parking allowed here.", can_park: false };
     }
 
     case "paid": {
       const paid = status.activeRules.find((r) => r.rule_type === "paid");
       const limit = paid?.time_limit_minutes;
       const end = paid?.time_window?.end;
-      let answer = "Yes. paid parking.";
-      if (limit) answer = `Yes. paid parking, ${formatLimit(limit)} maximum.`;
+      let answer = "Yes. Paid parking.";
+      if (limit) answer = `Yes. Paid parking, ${formatLimit(limit)} maximum.`;
       if (end) answer += ` Meters enforced until ${formatTime(end)}.`;
       return { answer, can_park: true };
     }
 
     case "permit":
-      return { answer: "No. permit zone. A residential parking permit is required.", can_park: false };
+      return { answer: "No. Permit zone. A residential parking permit is required.", can_park: false };
 
     case "accessible":
-      return { answer: "No. accessible parking only. A valid accessibility permit is required.", can_park: false };
+      return { answer: "No. Accessible parking only. A valid accessibility permit is required.", can_park: false };
 
     case "free": {
       const limitRule = rules.find((r) => r.time_limit_minutes && !r.is_prohibited);
       const timeLimit = limitRule?.time_limit_minutes;
-      let answer = "Yes. free to park here.";
-      if (timeLimit) answer = `Yes. free parking, ${formatLimit(timeLimit)} maximum.`;
+      let answer = "Yes. Free to park here.";
+      if (timeLimit) answer = `Yes. Free parking, ${formatLimit(timeLimit)} maximum.`;
       if (nextRestrictionAt) answer += ` Restrictions begin at ${formatTime(nextRestrictionAt)}.`;
       return { answer, can_park: true };
     }
