@@ -1,5 +1,5 @@
 /**
- * Batch OCR test script — runs Google Vision on every image in a folder
+ * Batch OCR test script - runs Google Vision on every image in a folder
  * and prints what the parser would extract from each sign.
  *
  * Usage:

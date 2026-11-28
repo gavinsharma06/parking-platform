@@ -81,7 +81,7 @@ export function timeToMinutes(hhmm: string): number {
 
 // ─── Local clock ──────────────────────────────────────────────────────────────
 // Sign rules are written in the local time of the street they stand on, so
-// they must be evaluated in that timezone — never in the timezone of whatever
+// they must be evaluated in that timezone - never in the timezone of whatever
 // machine runs the code (servers usually run in UTC, visitors may be anywhere).
 
 const DEFAULT_PARKING_TIME_ZONE = "America/Halifax";

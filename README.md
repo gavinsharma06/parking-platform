@@ -12,8 +12,8 @@ Find free parking, paid parking, street parking, and community verified spots on
 | UI | React 19.2, Tailwind CSS v4 |
 | Language | TypeScript |
 | Map | Mapbox GL JS v3 |
-| Database | Supabase (planned) |
-| OCR | Google Vision API (planned) |
+| Database | Supabase |
+| OCR | Gemini Vision |
 
 ## Prerequisites
 
@@ -120,7 +120,6 @@ src/
       Navbar.tsx        Top navigation bar
     map/
       ParkingMap.tsx    Mapbox GL JS map (client component)
-      ParkingMarker.tsx Individual parking markers (in progress)
     capture/            Future: camera and sign photo submission
     parking/            Future: parking spot cards and details
   lib/                  Future: API helpers and utilities
@@ -138,19 +137,9 @@ src/
 
 ## Current status
 
-The homepage is a UI preview. No backend is connected yet.
+Park Off shows parking spots and current restrictions on a live Halifax map. Visitors can submit sign photos or use Can I Park Here to check a sign. Admins review community submissions before they appear on the map.
 
-What is working:
-- Homepage with hero, map preview, how it works, and contribution sections
-- Live Mapbox map centered on downtown Halifax
-- Navbar with placeholder links
-
-What is planned:
-- Real parking spot data from Supabase
-- Parking markers on the map (free, paid, restricted)
-- Parking sign photo upload with Google Vision OCR
-- Community verification flow
-- User accounts
+Community verification and user accounts are planned.
 
 ## Contributors
 

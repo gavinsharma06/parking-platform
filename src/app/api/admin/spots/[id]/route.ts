@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-route-guard";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 
-// PATCH /api/admin/spots/[id] — edit a spot's attributes
+// PATCH /api/admin/spots/[id] - edit a spot's attributes
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -14,7 +14,7 @@ export async function PATCH(
   const supabase = createServiceRoleClient();
   const body = await req.json();
 
-  // Only allow editing safe fields — latitude/longitude locked to prevent silent map drift
+  // Only allow editing safe fields - latitude/longitude locked to prevent silent map drift
   const allowed = [
     "parking_type",
     "street_name",
@@ -43,7 +43,7 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/admin/spots/[id] — full lifecycle delete
+// DELETE /api/admin/spots/[id] - full lifecycle delete
 //
 // DB handles automatically via FK rules:
 //   - parking_spot_history  (ON DELETE CASCADE)
@@ -51,7 +51,7 @@ export async function PATCH(
 //   - sign_submissions.parking_spot_id (ON DELETE SET NULL)
 //
 // We manually reset sign_submissions.status → pending_review first,
-// because SET NULL only clears the FK — it doesn't touch the status field.
+// because SET NULL only clears the FK - it doesn't touch the status field.
 // Sign images in storage are kept for audit trail.
 export async function DELETE(
   req: NextRequest,
@@ -69,7 +69,7 @@ export async function DELETE(
     .from("sign_submissions")
     .update({
       status: "pending_review",
-      reviewer_notes: "Spot was deleted by admin — resubmitted for review",
+      reviewer_notes: "Spot was deleted by admin - resubmitted for review",
     })
     .eq("parking_spot_id", id);
 
@@ -77,7 +77,7 @@ export async function DELETE(
     return NextResponse.json({ error: `Failed to reset submissions: ${resetError.message}` }, { status: 500 });
   }
 
-  // Delete the spot — Postgres CASCADE handles parking_spot_history and reports.
+  // Delete the spot - Postgres CASCADE handles parking_spot_history and reports.
   const { error: deleteError } = await supabase
     .from("parking_spots")
     .delete()

@@ -83,7 +83,7 @@ function computeSpots(raw: typeof SAMPLE_SPOTS, now: Date): Spot[] {
       const ev = evaluateSpot(rules, now);
       return { ...s, current_status: ev.status, current_color: ev.color, current_label: ev.label };
     }
-    // No rules at all — fall back to static parking_type
+    // No rules at all - fall back to static parking_type
     const color = STATUS_COLOR[s.parking_type] ?? STATUS_COLOR.unknown;
     const label = s.parking_type.charAt(0).toUpperCase() + s.parking_type.slice(1) + " parking";
     return { ...s, current_status: s.parking_type, current_color: color, current_label: label };
@@ -275,7 +275,7 @@ export default function ParkingMap() {
       }
     });
 
-    // Individual spots — symbol layer keeps everything GPU-rendered (no DOM lag)
+    // Individual spots - symbol layer keeps everything GPU-rendered (no DOM lag)
     map.addLayer({
       id: "spots",
       type: "symbol",

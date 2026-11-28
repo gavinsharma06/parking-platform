@@ -76,7 +76,7 @@ function transformPaid(feature) {
 // ── Duplicate detection ───────────────────────────────────────────────────────
 // For HRM data: the composite unique index on (source_type, external_id) handles
 // same-source duplicates via upsert. This function catches cross-source duplicates:
-// a spot is considered a duplicate if all three match an existing row —
+// a spot is considered a duplicate if all three match an existing row -
 //   1. within PROXIMITY_M metres
 //   2. same parking_type
 //   3. same street_name (case-insensitive, null-safe)
@@ -114,7 +114,7 @@ async function filterDuplicates(rows) {
       const rowStreet = (row.street_name ?? "").toLowerCase().trim();
       if (exStreet && rowStreet && exStreet !== rowStreet) return false;
 
-      // 3. Within PROXIMITY_M metres (Haversine approximation — good enough at city scale)
+      // 3. Within PROXIMITY_M metres (Haversine approximation - good enough at city scale)
       const dLat = (ex.latitude  - row.latitude)  * (Math.PI / 180);
       const dLng = (ex.longitude - row.longitude) * (Math.PI / 180);
       const a =

@@ -256,7 +256,7 @@ function SubmissionsTab() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-400">No OCR data — manual review needed</p>
+                          <p className="text-sm text-gray-400">No OCR data - manual review needed</p>
                         )}
 
                         {/* Raw OCR text */}
@@ -424,7 +424,7 @@ function SpotRow({ spot, onSaved, onDeleted }: { spot: ParkingSpot; onSaved: () 
         <div className="border-t border-red-100 bg-red-50 px-5 py-4">
           <p className="text-sm font-semibold text-red-800 mb-1">Delete this marker?</p>
           <p className="text-xs text-red-600 mb-3">
-            Removes it from the map immediately. Any linked submissions are reset to pending review — no data is lost.
+            Removes it from the map immediately. Any linked submissions are reset to pending review - no data is lost.
           </p>
           {error && <p className="mb-2 text-xs text-red-700">{error}</p>}
           <div className="flex gap-2">

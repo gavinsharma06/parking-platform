@@ -148,7 +148,7 @@ export default function ParkingCheck() {
           </p>
           {result.confidence < 0.5 && (
             <p className="mt-2 text-xs text-gray-500">
-              Low confidence — sign may be partially obscured. Verify in person.
+              Low confidence - sign may be partially obscured. Verify in person.
             </p>
           )}
         </div>
@@ -168,7 +168,7 @@ export default function ParkingCheck() {
         <p className="text-center text-xs text-gray-400">
           {saved
             ? "Your photo was saved and will help improve the parking map."
-            : "Location unavailable — answer shown but photo not saved to map."}
+            : "Location unavailable - answer shown but photo not saved to map."}
         </p>
 
         {/* Rules breakdown */}
@@ -187,7 +187,7 @@ export default function ParkingCheck() {
                   <div>
                     <p className="text-sm font-semibold text-gray-800">
                       {RULE_TYPE_LABEL[rule.rule_type]}
-                      {rule.tow_away && " — Tow away"}
+                      {rule.tow_away && " - Tow away"}
                     </p>
                     <p className="text-xs text-gray-500">
                       {[

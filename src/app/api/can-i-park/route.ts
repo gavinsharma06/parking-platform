@@ -2,52 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase-server";
 import { extractParkingData, geminiErrorResponse, isGeminiConfigured } from "@/lib/gemini";
 import { generateAnswer } from "@/lib/parking-answer";
+import { buildPrompt, fetchFewShotExamples } from "@/lib/training-examples";
 import { isHalifaxLocation } from "@/lib/validation";
 import { enforceAiRateLimit, readImageRequest } from "@/lib/ai-guard";
 import type { ExtractedParkingData } from "@/lib/parking-rules";
-
-const PROMPT = `You are a parking sign parser. Analyze this parking sign image and extract all parking rules.
-
-Return a JSON object matching this TypeScript type:
-
-type RuleType = "paid" | "free" | "permit_only" | "accessible" | "no_parking" | "no_stopping" | "street_cleaning" | "tow_away";
-
-type ParkingRule = {
-  rule_type: RuleType;
-  is_prohibited: boolean;
-  days: number[] | null;
-  time_window: { start: string; end: string } | null;
-  time_limit_minutes: number | null;
-  cost_per_hour: number | null;
-  permit_zone: string | null;
-  tow_away: boolean;
-  direction: "left" | "right" | "both" | null;
-  raw_text: string;
-};
-
-type ExtractedParkingData = {
-  rules: ParkingRule[];
-  raw_text: string;
-  confidence: number;
-  parking_type: "free" | "paid" | "permit" | "accessible" | "unknown";
-  time_limit_minutes: number | null;
-  cost_per_hour: number | null;
-  schedule: string | null;
-};
-
-Rules:
-- Each distinct sign panel = one ParkingRule entry
-- is_prohibited: true for no_parking, no_stopping, street_cleaning, tow_away
-- parking_type: derive from highest-priority rule (accessible > permit > paid > free > unknown)
-- time_limit_minutes: from the first rule that has a limit
-- cost_per_hour: from the first paid rule
-- schedule: start–end from the first rule with a time window, or null
-- confidence: 0.9+ if clearly readable, 0.5 if partial, 0.1 if unreadable
-- direction: "left" / "right" / "both" / null based on arrow symbols
-
-Respond with raw JSON only, no markdown, no code fences.`;
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   // ── Rate limiting (before the body is read or any AI call is made) ─────────
@@ -69,7 +27,8 @@ export async function POST(req: NextRequest) {
 
   let parsed: ExtractedParkingData;
   try {
-    parsed = await extractParkingData(base64Data, PROMPT);
+    const examples = await fetchFewShotExamples(5);
+    parsed = await extractParkingData(base64Data, buildPrompt(examples));
   } catch (err) {
     const { status, body } = geminiErrorResponse(err);
     return NextResponse.json(body, { status });
@@ -100,7 +59,7 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch {
-      // Non-fatal — user still gets their answer
+      // Non-fatal - user still gets their answer
     }
   }
 

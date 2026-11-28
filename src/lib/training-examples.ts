@@ -17,7 +17,7 @@ export interface TrainingExample {
  *   - Supabase env vars are absent (local dev without DB config)
  *   - The query fails for any reason
  *
- * Callers must never hard-fail when few-shot examples are unavailable — the
+ * Callers must never hard-fail when few-shot examples are unavailable - the
  * route still works fine with the base prompt.
  */
 export async function fetchFewShotExamples(limit = 5): Promise<TrainingExample[]> {
@@ -96,7 +96,7 @@ Rules:
 /**
  * Formats approved training examples into an XML-tagged few-shot block.
  *
- * Returns an empty string when examples is empty — callers can safely
+ * Returns an empty string when examples is empty - callers can safely
  * concatenate without an unwanted blank section appearing in the prompt.
  *
  * Each shot contains:

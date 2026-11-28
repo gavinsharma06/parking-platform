@@ -2,7 +2,7 @@ import Navbar from "@/components/layout/Navbar";
 import ParkingCheck from "@/components/parking-check/ParkingCheck";
 
 export const metadata = {
-  title: "Can I Park Here? — Park Off",
+  title: "Can I Park Here? - Park Off",
 };
 
 export default function CanIParkPage() {

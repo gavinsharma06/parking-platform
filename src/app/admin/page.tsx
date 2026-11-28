@@ -2,7 +2,7 @@ import Navbar from "@/components/layout/Navbar";
 import AdminDashboard from "./AdminDashboard";
 
 export const metadata = {
-  title: "Admin — Park Off",
+  title: "Admin - Park Off",
 };
 
 export default function AdminPage() {
